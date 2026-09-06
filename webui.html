@@ -1,0 +1,1990 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Janus - Local AI Interface</title>
+    <style>
+        *{box-sizing:border-box;margin:0;padding:0}
+        body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:#f1f5f9;min-height:100vh;color:#0f172a;font-size:16px}
+        .app-header{background:#fff;border-bottom:1px solid #e2e8f0;padding:14px 28px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:100;box-shadow:0 1px 4px rgba(0,0,0,0.07)}
+        .app-logo{font-size:1.3rem;font-weight:700;color:#1e40af;display:flex;align-items:center;gap:10px}
+        .logo-tag{font-size:0.78rem;font-weight:400;color:#64748b;border-left:1px solid #e2e8f0;padding-left:10px;margin-left:4px}
+        .status-pills{display:flex;gap:8px}
+        .pill{padding:4px 12px;border-radius:20px;font-size:0.75rem;font-weight:500}
+        .pill.local{background:#dcfce7;color:#166534}
+        .pill.hipaa{background:#dbeafe;color:#1e40af}
+        .pill.model{background:#f0fdf4;color:#15803d;border:1px solid #bbf7d0}
+        .pill.community{background:#f1f5f9;color:#64748b;border:1px solid #e2e8f0}
+        .pill.professional{background:#ede9fe;color:#5b21b6;border:1px solid #c4b5fd}
+        .pill.enterprise{background:#fef3c7;color:#92400e;border:1px solid #fcd34d}
+        .app-nav{background:#fff;border-bottom:1px solid #e2e8f0;padding:0 28px;display:flex;align-items:center}
+        .nav-tab{padding:14px 18px;font-size:0.95rem;font-weight:500;color:#64748b;cursor:pointer;border-bottom:3px solid transparent;transition:all 0.2s;user-select:none;white-space:nowrap}
+        .nav-tab:hover{color:#1e40af}
+        .nav-tab.active{color:#1e40af;border-bottom-color:#1e40af}
+        .nav-spacer{flex:1}
+        .nav-adv{padding:14px 14px;font-size:0.82rem;color:#94a3b8;cursor:pointer;user-select:none;border-bottom:3px solid transparent}
+        .nav-adv:hover{color:#64748b}
+        #adv-tabs{display:none}
+        .adv-badge{display:inline-block;font-size:0.68rem;background:#f1f5f9;color:#94a3b8;padding:1px 5px;border-radius:3px;margin-left:3px;vertical-align:middle}
+        .container{max-width:920px;margin:0 auto;padding:28px 20px 60px}
+        .panel{display:none}
+        .panel.active{display:block}
+        /* Cards */
+        .card{background:#fff;border:1px solid #e2e8f0;border-radius:14px;padding:24px;margin-bottom:16px;box-shadow:0 1px 4px rgba(0,0,0,0.05)}
+        /* Buttons */
+        .btn-primary{padding:13px 28px;background:#1e40af;border:none;border-radius:10px;color:#fff;font-size:1rem;font-weight:600;cursor:pointer;transition:background 0.2s,transform 0.1s;display:inline-flex;align-items:center;gap:8px}
+        .btn-primary:hover{background:#1d3a9e}
+        .btn-primary:active{transform:scale(0.98)}
+        .btn-primary:disabled{opacity:0.5;cursor:not-allowed;transform:none}
+        .btn-secondary{padding:9px 18px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;color:#475569;font-size:0.88rem;font-weight:500;cursor:pointer;transition:all 0.2s}
+        .btn-secondary:hover{background:#f1f5f9;border-color:#cbd5e1}
+        .btn{padding:11px 22px;background:#1e40af;border:none;border-radius:10px;color:#fff;font-weight:600;cursor:pointer;font-size:0.95rem;transition:all 0.2s}
+        .btn:hover{background:#1d3a9e}
+        .btn:disabled{opacity:0.5;cursor:not-allowed}
+        /* Forms */
+        .form-group{margin-bottom:14px}
+        .form-group label{display:block;margin-bottom:5px;font-size:0.875rem;font-weight:500;color:#475569}
+        .form-group input,.form-group textarea,.form-group select{width:100%;background:#fff;border:1px solid #cbd5e1;border-radius:8px;padding:9px 13px;color:#0f172a;font-family:inherit;font-size:0.95rem;transition:border-color 0.2s}
+        .form-group input:focus,.form-group textarea:focus{outline:none;border-color:#1e40af;box-shadow:0 0 0 3px rgba(30,64,175,0.1)}
+        .form-group textarea{min-height:90px;resize:vertical}
+        /* Assistant mode */
+        .assist-hero{text-align:center;padding:20px 0 28px}
+        .assist-hero h2{font-size:1.7rem;font-weight:700;color:#0f172a;margin-bottom:8px}
+        .assist-hero p{color:#64748b;font-size:1rem}
+        .assist-textarea{width:100%;min-height:110px;background:#fff;border:2px solid #e2e8f0;border-radius:12px;padding:14px 16px;font-size:1.02rem;font-family:inherit;color:#0f172a;resize:vertical;transition:border-color 0.2s}
+        .assist-textarea:focus{outline:none;border-color:#1e40af;box-shadow:0 0 0 3px rgba(30,64,175,0.1)}
+        .quick-actions{display:flex;gap:8px;flex-wrap:wrap;margin:12px 0 4px}
+        /* Document upload */
+        .upload-zone{border:2px dashed #cbd5e1;border-radius:10px;padding:12px 14px;margin-top:12px;background:#f8fafc;transition:all 0.2s}
+        .upload-zone.dragover{border-color:#1e40af;background:#eff6ff}
+        .upload-zone-inner{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+        .upload-btn{padding:7px 14px;background:#fff;border:1px solid #cbd5e1;border-radius:8px;font-size:0.85rem;color:#0f172a;cursor:pointer;transition:all 0.15s}
+        .upload-btn:hover{background:#f1f5f9;border-color:#1e40af;color:#1e40af}
+        .upload-hint{font-size:0.78rem;color:#94a3b8}
+        .uploaded-files{display:flex;flex-direction:column;gap:6px;margin-top:10px}
+        .uploaded-file{display:flex;align-items:center;gap:8px;padding:7px 11px;background:#ecfdf5;border:1px solid #a7f3d0;border-radius:7px;font-size:0.82rem;color:#065f46}
+        .uploaded-file .remove{margin-left:auto;cursor:pointer;color:#64748b;font-weight:700;padding:0 4px}
+        .uploaded-file .remove:hover{color:#dc2626}
+        .upload-progress{flex:1;height:4px;background:#e2e8f0;border-radius:2px;overflow:hidden;display:none}
+        .upload-progress-fill{height:100%;background:#1e40af;width:0;transition:width 0.2s}
+        .section-label{width:100%;font-size:0.72rem;font-weight:700;letter-spacing:0.05em;text-transform:uppercase;color:#94a3b8;margin-bottom:4px}
+        .quick-chip{padding:6px 14px;background:#eff6ff;border:1px solid #bfdbfe;border-radius:20px;font-size:0.83rem;color:#1e40af;cursor:pointer;transition:all 0.2s;user-select:none}
+        .quick-chip:hover{background:#dbeafe}
+        .result-card{background:#fff;border:1px solid #e2e8f0;border-radius:14px;overflow:hidden;box-shadow:0 4px 14px rgba(0,0,0,0.08)}
+        .result-header{background:#f0fdf4;border-bottom:1px solid #bbf7d0;padding:13px 20px;display:flex;align-items:center;justify-content:space-between}
+        .result-header .label{font-weight:600;color:#166534;font-size:0.9rem;display:flex;align-items:center;gap:8px}
+        .result-body{padding:20px;font-size:1rem;line-height:1.75;color:#1e293b;white-space:pre-wrap}
+        .result-actions{padding:12px 20px;border-top:1px solid #f1f5f9;display:flex;gap:8px;align-items:center}
+        .loading-bar{width:100%;height:4px;background:#e2e8f0;border-radius:2px;overflow:hidden;margin-top:16px}
+        .loading-bar-fill{height:100%;background:linear-gradient(90deg,#1e40af,#60a5fa,#1e40af);background-size:200% 100%;animation:loading 1.5s ease infinite;border-radius:2px}
+        @keyframes loading{0%{background-position:200% 0}100%{background-position:-200% 0}}
+        .status-msg{text-align:center;color:#64748b;font-size:0.9rem;margin-top:12px}
+        /* Chat */
+        .chat-container{background:#fff;border:1px solid #e2e8f0;border-radius:14px;display:flex;flex-direction:column;height:65vh;box-shadow:0 1px 4px rgba(0,0,0,0.05)}
+        .chat-messages{flex:1;overflow-y:auto;padding:20px;display:flex;flex-direction:column;gap:10px}
+        .message{max-width:80%;padding:11px 15px;border-radius:12px;line-height:1.6;font-size:0.95rem;animation:fadeIn 0.25s ease}
+        @keyframes fadeIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+        .message.user{background:#1e40af;color:#fff;margin-left:auto;border-radius:12px 12px 4px 12px}
+        .message.assistant{background:#f8fafc;border:1px solid #e2e8f0;color:#1e293b;border-radius:12px 12px 12px 4px}
+        .message.system{background:#fffbeb;border:1px solid #fde68a;color:#92400e;font-size:0.85rem;max-width:100%;text-align:center}
+        .chat-input{display:flex;gap:10px;padding:14px 16px;border-top:1px solid #e2e8f0}
+        .chat-input textarea{flex:1;background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:11px 14px;color:#0f172a;font-size:0.97rem;resize:none;min-height:46px;font-family:inherit}
+        .chat-input textarea:focus{outline:none;border-color:#1e40af}
+        /* Agent pipeline (advanced) */
+        .agent-panel{background:#fff;border:1px solid #e2e8f0;border-radius:14px;padding:22px;margin-bottom:14px}
+        .agent-panel h3{color:#1e40af;margin-bottom:14px;font-size:1rem}
+        .step-item{background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:11px;margin-bottom:8px}
+        .step-item .title{color:#1e40af;font-weight:600}
+        .step-item .owner{color:#64748b;font-size:0.83rem}
+        /* Typing indicator */
+        .typing-indicator{display:flex;gap:4px;padding:4px}
+        .typing-indicator span{width:8px;height:8px;background:#3b82f6;border-radius:50%;animation:bounce 1.4s infinite ease-in-out}
+        .typing-indicator span:nth-child(1){animation-delay:-0.32s}
+        .typing-indicator span:nth-child(2){animation-delay:-0.16s}
+        @keyframes bounce{0%,80%,100%{transform:scale(0)}40%{transform:scale(1)}}
+        pre{background:#f1f5f9;border:1px solid #e2e8f0;padding:12px;border-radius:8px;overflow-x:auto;font-size:0.83rem;color:#1e293b}
+        code{font-family:'Courier New',monospace;color:#1e40af}
+        .error{color:#dc2626;background:#fef2f2;padding:10px 14px;border-radius:8px;border:1px solid #fecaca;font-size:0.9rem}
+        #session-sidebar{display:none}
+        @media(max-width:768px){.app-header{padding:12px 16px}.assist-hero h2{font-size:1.35rem}.status-pills .pill.model{display:none}}
+    </style>
+</head>
+<body ondragover="event.preventDefault()" ondragenter="event.preventDefault()" ondrop="event.preventDefault()">
+    <header class="app-header">
+        <div class="app-logo">🜁 Janus<span class="logo-tag">Local AI Assistant</span></div>
+        <div class="status-pills">
+            <span class="pill local" id="backend-status">● Local AI</span>
+            <span class="pill community" id="license-pill">🔑 Community</span>
+            <span class="pill model" id="model-status">Loading…</span>
+        </div>
+    </header>
+    <nav class="app-nav">
+        <div class="nav-tab active" id="nav-assist" onclick="switchTab('assist')">💼 Assistant</div>
+        <div class="nav-tab" id="nav-chat" onclick="switchTab('chat')">💬 Chat</div>
+        <div class="nav-spacer"></div>
+        <div class="nav-adv" onclick="toggleAdvanced()">⚙ Advanced <span id="adv-arrow">▸</span></div>
+        <div id="adv-tabs" style="display:none">
+            <div class="nav-tab" id="nav-agent" onclick="switchTab('agent')">🤖 Pipeline</div>
+            <div class="nav-tab" id="nav-swarm" onclick="switchTab('swarm')">⚡ Swarm</div>
+            <div class="nav-tab" id="nav-config" onclick="switchTab('config')">⚙️ Config</div>
+            <div class="nav-tab" id="nav-memory" onclick="switchTab('memory')">🧠 Memory</div>
+            <div class="nav-tab" id="nav-skills" onclick="switchTab('skills')">🧰 Skills</div>
+        </div>
+    </nav>
+
+
+    <!-- Update-available banner (populated by JS) -->
+    <div id="update-banner" style="display:none;background:#eff6ff;border-bottom:1px solid #bfdbfe;padding:8px 28px;font-size:0.82rem;color:#1e40af;align-items:center;gap:10px">
+        🔄 <span id="update-msg"></span>
+    </div>
+
+    <div class="container">
+        <!-- Assistant Panel -->
+        <div class="panel active" id="assist-panel">
+            <div class="assist-hero"><h2>What can I help you with today?</h2><p>Describe your task in plain language — all AI processing runs locally on this computer. <strong>Not a substitute for clinical judgment.</strong></p></div>
+            <div class="card">
+                <textarea class="assist-textarea" id="assist-input" placeholder="Example: Extract text from this PDF, create a Word document, or process uploaded files…"></textarea>
+                <div class="quick-actions">
+                    <div class="section-label">Quick starts</div>
+                    <span class="quick-chip" onclick="fillQuick('Write a patient referral letter to')">📨 Referral Letter</span>
+                    <span class="quick-chip" onclick="fillQuick('Create a SOAP visit note for a patient with')">📋 SOAP Note</span>
+                    <span class="quick-chip" onclick="fillQuick('Summarize patient history and current medications for')">📄 Patient Summary</span>
+                    <span class="quick-chip" onclick="fillQuick('Draft a prior authorization letter for')">✉ Prior Auth</span>
+                    <span class="quick-chip" onclick="fillQuick('Write a care plan for a patient with')">🗂 Care Plan</span>
+                </div>
+
+                <!-- Document upload -->
+                <div class="upload-zone" id="assist-upload-zone">
+                    <div class="upload-zone-inner">
+                        <label for="assist-file-input" class="upload-btn">📎 Attach document</label>
+                        <input type="file" id="assist-file-input" style="display:none" multiple
+                               accept=".pdf,.docx,.doc,.rtf,.odt,.txt,.md,.csv,.tsv,.json,.xml,.yaml,.yml,.hl7,.html,.htm,.log,.xlsx,.xls,.png,.jpg,.jpeg,.tif,.tiff,.bmp,.gif"
+                               onchange="uploadFiles(this.files, 'assist')">
+                        <span class="upload-hint">or drag files here — PDF, Word, images (OCR), HL7, CSV, JSON, text, spreadsheets (max 50 MB)</span>
+                        <div class="upload-progress" id="assist-upload-progress"><div class="upload-progress-fill"></div></div>
+                    </div>
+                    <div class="uploaded-files" id="assist-uploaded-files"></div>
+                </div>
+
+                <div style="display:flex;align-items:center;justify-content:space-between;margin-top:18px;flex-wrap:wrap;gap:10px">
+                    <span style="font-size:0.8rem;color:#94a3b8">🔒 No data leaves this computer</span>
+                    <button class="btn-primary" id="assist-btn" onclick="assistantSubmit()">✨ Get Started</button>
+                </div>
+            </div>
+            <div id="assist-loading" style="display:none">
+                <div class="card" style="padding:20px 24px">
+                    <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
+                        <div class="loading-bar" style="flex:1"><div class="loading-bar-fill"></div></div>
+                        <div class="status-msg" id="assist-status-msg" style="white-space:nowrap">Working…</div>
+                    </div>
+                    <div id="agent-discussion" style="display:flex;flex-direction:column;gap:8px;max-height:320px;overflow-y:auto"></div>
+                </div>
+            </div>
+            <div id="assist-result" style="display:none;margin-top:16px"></div>
+            <div id="assist-history" style="margin-top:24px"></div>
+        </div>
+
+        <!-- Chat Panel -->
+        <div class="panel" id="chat-panel">
+            <div style="display:flex;gap:10px;margin-bottom:10px;align-items:center;flex-wrap:wrap">
+                <select id="chat-model-select" style="background:#fff;border:1px solid #cbd5e1;border-radius:8px;padding:8px 14px;color:#0f172a;font-size:0.9rem;flex:1;min-width:180px">
+                    <option value="">Loading models…</option>
+                </select>
+                <button class="btn-secondary" onclick="newChat()" style="white-space:nowrap">＋ New Chat</button>
+                <button class="btn-secondary" onclick="switchTab('memory')" style="white-space:nowrap">🧠 Memory</button>
+            </div>
+            <div style="display:flex;gap:10px">
+                <!-- Session sidebar -->
+                <div id="session-sidebar" style="width:200px;flex-shrink:0;display:none;flex-direction:column;gap:6px">
+                    <div style="font-size:0.8rem;color:#888;margin-bottom:4px">RECENT CHATS</div>
+                    <div id="session-list" style="display:flex;flex-direction:column;gap:4px;max-height:60vh;overflow-y:auto"></div>
+                </div>
+                <div class="chat-container" style="flex:1">
+                    <div class="chat-messages" id="chat-messages">
+                        <div class="message system">Welcome to Janus Clinical AI. I run entirely on this device — no data is sent externally. How can I assist you today?</div>
+                    </div>
+                    <div class="chat-input">
+                        <label for="chat-file-input" class="upload-btn" title="Attach document" style="display:flex;align-items:center;padding:0 12px">📎</label>
+                        <input type="file" id="chat-file-input" style="display:none" multiple
+                               accept=".pdf,.docx,.doc,.rtf,.odt,.txt,.md,.csv,.tsv,.json,.xml,.yaml,.yml,.hl7,.html,.htm,.log,.xlsx,.xls,.png,.jpg,.jpeg,.tif,.tiff,.bmp,.gif"
+                               onchange="uploadFiles(this.files, 'chat')">
+                        <textarea id="chat-input" placeholder="Type your message… (Enter to send, Shift+Enter for newline)" onkeydown="handleChatKey(event)"></textarea>
+                        <button class="btn" id="send-btn" onclick="sendMessage()">Send</button>
+                    </div>
+                    <div class="uploaded-files" id="chat-uploaded-files" style="padding:0 16px 10px"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Memory Panel -->
+        <div class="panel" id="memory-panel">
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px">
+                <div class="agent-panel">
+                    <h3>📚 Conversation History</h3>
+                    <div id="mem-sessions" style="display:flex;flex-direction:column;gap:8px;max-height:60vh;overflow-y:auto"></div>
+                </div>
+                <div class="agent-panel">
+                    <h3>💡 Remembered Facts</h3>
+                    <p style="color:#888;font-size:0.85rem;margin-bottom:12px">These are injected into every conversation automatically.</p>
+                    <div style="display:flex;gap:8px;margin-bottom:12px">
+                        <input type="text" id="fact-key" placeholder="Key (e.g. name)" style="flex:1;background:#f8fafc;border:1px solid #cbd5e1;border-radius:8px;padding:8px 12px;color:#0f172a;font-family:inherit">
+                        <input type="text" id="fact-value" placeholder="Value" style="flex:2;background:#f8fafc;border:1px solid #cbd5e1;border-radius:8px;padding:8px 12px;color:#0f172a;font-family:inherit">
+                        <button class="btn" onclick="saveFact()">Save</button>
+                    </div>
+                    <div id="mem-facts" style="display:flex;flex-direction:column;gap:6px"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Agent Pipeline Panel (Kernel Mode) -->
+        <div class="panel" id="agent-panel">
+            <!-- Task Input -->
+            <div class="agent-panel" style="margin-bottom:16px">
+                <h3 style="display:flex;align-items:center;gap:8px">Kernel Agent <span style="font-size:0.75rem;color:#64748b;font-weight:400">Single brain, tools as hands</span></h3>
+                <div class="form-group">
+                    <label>Task ID <span style="color:#666;font-size:0.8rem">(optional)</span></label>
+                    <input type="text" id="task-id" placeholder="auto-generated if blank">
+                </div>
+                <div class="form-group">
+                    <label>What do you want the AI to do?</label>
+                    <textarea id="task-input" placeholder="Describe your task. The AI will think, use tools (read/write/exec/delete), and deliver results." style="min-height:80px"></textarea>
+                </div>
+                <button class="btn" id="submit-task-btn" onclick="submitTask()" style="width:100%">Run Kernel</button>
+                <div id="plan-output" style="margin-top:14px"></div>
+            </div>
+
+            <!-- Live Tool Log -->
+            <div class="agent-panel" id="kernel-log-section" style="display:none;margin-bottom:16px;border-color:rgba(0,212,255,0.4)">
+                <h3 style="display:flex;align-items:center;gap:8px">Live Tool Log <span id="kernel-iter-count" style="font-size:0.75rem;color:#64748b;font-weight:400"></span></h3>
+                <div id="kernel-tool-log" style="max-height:400px;overflow-y:auto;display:flex;flex-direction:column;gap:6px;font-size:0.82rem"></div>
+            </div>
+
+            <!-- Results -->
+            <div class="agent-panel" id="results-section" style="display:none">
+                <h3>Results</h3>
+                <div id="handoff-output"></div>
+                <button class="btn" onclick="resetPipeline()" style="margin-top:14px;background:rgba(255,255,255,0.08);color:#e0e0e0;width:100%">New Task</button>
+            </div>
+        </div>
+        <!-- Config Panel -->
+        <div class="panel" id="config-panel">
+            <!-- Compliance Mode Card -->
+            <div class="agent-panel" id="compliance-card" style="border:2px solid #fbbf24;background:#fffbeb">
+                <h3 style="color:#92400e;margin-bottom:10px">🛡️ Compliance Mode (HIPAA)</h3>
+                <p style="color:#78350f;font-size:0.85rem;margin-bottom:14px">When enabled, all cloud API routes are blocked and every action is written to <code>logs/audit.jsonl</code>. Required for clinical/healthcare deployments.</p>
+                <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap">
+                    <label style="display:flex;align-items:center;gap:10px;cursor:pointer;font-weight:600;color:#92400e">
+                        <input type="checkbox" id="compliance-toggle" style="width:20px;height:20px;cursor:pointer" onchange="setCompliance(this.checked)">
+                        <span id="compliance-label">Loading…</span>
+                    </label>
+                    <span id="compliance-locked" style="display:none;font-size:0.8rem;background:#fde68a;padding:3px 10px;border-radius:12px;color:#78350f">🔒 Locked by JANUS_HIPAA_STRICT env var</span>
+                </div>
+                <div id="compliance-status" style="margin-top:8px;font-size:0.82rem;color:#92400e"></div>
+            </div>
+            <!-- VRAM Budget Card -->
+            <div class="agent-panel" id="vram-card" style="border:1px solid #bfdbfe;background:#eff6ff">
+                <h3 style="color:#1e40af;margin-bottom:10px">📊 Engine / VRAM Budget</h3>
+                <div id="vram-status" style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:8px">
+                    <div style="text-align:center"><div style="font-size:0.75rem;color:#64748b">Used</div><div id="vram-used" style="font-size:1.3rem;font-weight:700;color:#1e40af">—</div></div>
+                    <div style="text-align:center"><div style="font-size:0.75rem;color:#64748b">Free</div><div id="vram-free" style="font-size:1.3rem;font-weight:700;color:#16a34a">—</div></div>
+                    <div style="text-align:center"><div style="font-size:0.75rem;color:#64748b">Ceiling</div><div id="vram-ceil" style="font-size:1.3rem;font-weight:700;color:#475569">—</div></div>
+                </div>
+                <div style="background:#e2e8f0;border-radius:6px;height:10px;overflow:hidden;margin-bottom:8px">
+                    <div id="vram-bar" style="height:100%;background:#1e40af;border-radius:6px;width:0%;transition:width 0.3s"></div>
+                </div>
+                <div style="display:flex;justify-content:space-between;font-size:0.8rem;color:#64748b">
+                    <span>Backend: <strong id="vram-backend">—</strong></span>
+                    <span>Model: <strong id="vram-model">—</strong></span>
+                    <button class="btn-secondary" onclick="loadEngineStatus()" style="padding:2px 10px;font-size:0.75rem">Refresh</button>
+                </div>
+            </div>
+
+            <!-- Telemetry Dashboard Card -->
+            <div class="agent-panel" id="telemetry-card" style="border:1px solid #d8b4fe;background:#faf5ff">
+                <h3 style="color:#7c3aed;margin-bottom:10px">📈 Telemetry Dashboard</h3>
+                <div id="tele-grid" style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:8px">
+                    <div style="text-align:center"><div style="font-size:0.7rem;color:#64748b">Uptime</div><div id="tele-uptime" style="font-size:1.1rem;font-weight:700;color:#7c3aed">—</div></div>
+                    <div style="text-align:center"><div style="font-size:0.7rem;color:#64748b">Tasks</div><div id="tele-tasks" style="font-size:1.1rem;font-weight:700;color:#1e40af">—</div></div>
+                    <div style="text-align:center"><div style="font-size:0.7rem;color:#64748b">Chat Reqs</div><div id="tele-chat" style="font-size:1.1rem;font-weight:700;color:#0891b2">—</div></div>
+                    <div style="text-align:center"><div style="font-size:0.7rem;color:#64748b">Swarm Runs</div><div id="tele-swarm" style="font-size:1.1rem;font-weight:700;color:#ea580c">—</div></div>
+                    <div style="text-align:center"><div style="font-size:0.7rem;color:#64748b">Completed</div><div id="tele-completed" style="font-size:1.1rem;font-weight:700;color:#16a34a">—</div></div>
+                    <div style="text-align:center"><div style="font-size:0.7rem;color:#64748b">Failed</div><div id="tele-failed" style="font-size:1.1rem;font-weight:700;color:#dc2626">—</div></div>
+                    <div style="text-align:center"><div style="font-size:0.7rem;color:#64748b">Tool Calls</div><div id="tele-tools" style="font-size:1.1rem;font-weight:700;color:#475569">—</div></div>
+                    <div style="text-align:center"><div style="font-size:0.7rem;color:#64748b">Avg Latency</div><div id="tele-latency" style="font-size:1.1rem;font-weight:700;color:#475569">—</div></div>
+                </div>
+                <div style="text-align:right">
+                    <button class="btn-secondary" onclick="loadTelemetry()" style="padding:2px 10px;font-size:0.75rem">Refresh</button>
+                </div>
+            </div>
+
+            <div class="agent-panel">
+                <h3>⚙️ Role Model Config <span style="font-size:0.75rem;color:#888;font-weight:normal">— changes apply immediately, no restart needed</span></h3>
+                <p style="color:#888;font-size:0.85rem;margin-bottom:18px">Each role can use a different .gguf model. All roles fall back to JANUS_MODEL_PATH if left blank.</p>
+
+                <div style="display:grid;gap:14px">
+                    <div class="form-group" style="border:1px solid #bfdbfe;border-radius:8px;padding:12px;background:#eff6ff">
+                        <label>💬 Default Chat Model <span style="color:#1e40af;font-size:0.8rem">(💡 Chat tab uses this — hot-swappable!)</span></label>
+                        <select id="cfg-default" onchange="syncPath('default', this.value)"></select>
+                        <input type="text" id="cfg-default-path" placeholder="./models/your-model.gguf" style="margin-top:6px;width:100%;background:#f8fafc;border:1px solid #cbd5e1;border-radius:6px;padding:8px 12px;color:#0f172a;font-size:0.9rem">
+                    </div>
+                    <div class="form-group">
+                        <label>🏗 Master Architect <span style="color:#888;font-size:0.8rem">(English → spec, never builds)</span></label>
+                        <select id="cfg-architect"></select>
+                    </div>
+                    <div class="form-group">
+                        <label>🔨 Worker <span style="color:#888;font-size:0.8rem">(spec → builds)</span></label>
+                        <select id="cfg-worker"></select>
+                    </div>
+                    <div class="form-group">
+                        <label>⚖️ Judge <span style="color:#888;font-size:0.8rem">(fast audit, binary pass/fail)</span></label>
+                        <select id="cfg-judge"></select>
+                    </div>
+                    <div class="form-group">
+                        <label>✂️ Pruner <span style="color:#888;font-size:0.8rem">(strips context, defaults to Judge)</span></label>
+                        <select id="cfg-pruner"></select>
+                    </div>
+                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+                        <div class="form-group">
+                            <label>Backend</label>
+                            <select id="cfg-backend" style="background:#f8fafc;border:1px solid #cbd5e1;border-radius:6px;padding:8px 12px;color:#0f172a;width:100%">
+                                <option value="vulkan">vulkan (GPU)</option>
+                                <option value="cpu">cpu</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>Judge confidence threshold <span style="color:#888;font-size:0.8rem">(0.0–1.0)</span></label>
+                            <input type="number" id="cfg-confidence" min="0" max="1" step="0.05" value="0.85" style="background:#f8fafc;border:1px solid #cbd5e1;border-radius:6px;padding:8px 12px;color:#0f172a;width:100%">
+                        </div>
+                        <div class="form-group">
+                            <label>Max Worker retries</label>
+                            <input type="number" id="cfg-retries" min="1" max="5" value="2" style="background:#f8fafc;border:1px solid #cbd5e1;border-radius:6px;padding:8px 12px;color:#0f172a;width:100%">
+                        </div>
+                    </div>
+                </div>
+
+                <div style="margin-top:18px;display:flex;gap:10px;align-items:center">
+                    <button class="btn" onclick="saveConfig()">Save Config</button>
+                    <button class="btn" style="background:rgba(255,255,255,0.07)" onclick="loadConfig()">Reload from Server</button>
+                    <span id="cfg-status" style="font-size:0.85rem;color:#888"></span>
+                </div>
+
+                <!-- System Prompts -->
+                <div style="margin-top:32px;border-top:1px solid rgba(255,255,255,0.08);padding-top:24px">
+                    <h3 style="margin:0 0 6px 0">🧠 System Prompts <span style="font-size:0.75rem;color:#888;font-weight:normal">— role banners injected before every conversation</span></h3>
+                    <p style="color:#888;font-size:0.85rem;margin-bottom:18px">Each role gets this system prompt prepended when no system message is present. Edit to tune behavior, persona, and constraints.</p>
+
+                    <div style="display:grid;gap:18px">
+                        <div class="form-group">
+                            <label>💬 Default Chat <span style="color:#00d4ff;font-size:0.8rem">— used for all chat tab messages</span></label>
+                            <textarea id="prompt-default" rows="4" placeholder="You are Janus, a helpful AI assistant…" style="width:100%;background:rgba(0,0,0,0.35);border:1px solid rgba(0,212,255,0.25);border-radius:6px;padding:10px 12px;color:#e0e0e0;font-size:0.875rem;resize:vertical;font-family:inherit"></textarea>
+                        </div>
+                        <div class="form-group">
+                            <label>🏗 Planner / Architect</label>
+                            <textarea id="prompt-planner" rows="4" placeholder="You are the Master Architect…" style="width:100%;background:rgba(0,0,0,0.35);border:1px solid rgba(255,255,255,0.1);border-radius:6px;padding:10px 12px;color:#e0e0e0;font-size:0.875rem;resize:vertical;font-family:inherit"></textarea>
+                        </div>
+                        <div class="form-group">
+                            <label>🔨 Worker</label>
+                            <textarea id="prompt-worker" rows="4" placeholder="You are a skilled software engineer…" style="width:100%;background:rgba(0,0,0,0.35);border:1px solid rgba(255,255,255,0.1);border-radius:6px;padding:10px 12px;color:#e0e0e0;font-size:0.875rem;resize:vertical;font-family:inherit"></textarea>
+                        </div>
+                        <div class="form-group">
+                            <label>⚖️ Judge</label>
+                            <textarea id="prompt-judge" rows="3" placeholder="You are a senior code reviewer…" style="width:100%;background:rgba(0,0,0,0.35);border:1px solid rgba(255,255,255,0.1);border-radius:6px;padding:10px 12px;color:#e0e0e0;font-size:0.875rem;resize:vertical;font-family:inherit"></textarea>
+                        </div>
+                        <div class="form-group">
+                            <label>✂️ Pruner</label>
+                            <textarea id="prompt-pruner" rows="3" placeholder="You are a context optimizer…" style="width:100%;background:rgba(0,0,0,0.35);border:1px solid rgba(255,255,255,0.1);border-radius:6px;padding:10px 12px;color:#e0e0e0;font-size:0.875rem;resize:vertical;font-family:inherit"></textarea>
+                        </div>
+                    </div>
+                    <div style="margin-top:14px;display:flex;gap:10px;align-items:center">
+                        <button class="btn" onclick="savePrompts()">Save Prompts</button>
+                        <button class="btn" style="background:rgba(255,255,255,0.07)" onclick="resetPrompts()">Reset to Defaults</button>
+                        <span id="prompt-status" style="font-size:0.85rem;color:#888"></span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Swarm Panel -->
+        <div class="panel" id="swarm-panel">
+            <div class="agent-panel" style="margin-bottom:20px">
+                <h3>⚡ Swarm Pipeline — Architect → Worker → Judge → Pruner</h3>
+                <p style="color:#888;font-size:0.85rem;margin-bottom:15px">Describe anything in plain English. The AI team plans, builds, peer-reviews, and prunes automatically.</p>
+                <div class="form-group">
+                    <label>Task (plain English)</label>
+                    <textarea id="swarm-input" placeholder="e.g. Write a Python script that renames all .jpg files in a folder to include the date taken from EXIF data" style="min-height:80px"></textarea>
+                </div>
+                <button class="btn" id="swarm-run-btn" onclick="runSwarm()">Run Swarm</button>
+            </div>
+            <div class="agent-panel">
+                <h3 id="swarm-status-title">Status</h3>
+                <div id="swarm-pipeline-vis" style="display:flex;gap:10px;margin-bottom:20px;flex-wrap:wrap"></div>
+                <div id="swarm-events" style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:10px 14px;margin-bottom:12px;max-height:200px;overflow-y:auto;font-size:0.8rem;color:#475569;display:none"></div>
+                <div id="swarm-result" style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:15px;min-height:60px;white-space:pre-wrap;font-size:0.9rem;color:#1e293b"></div>
+            </div>
+        </div>
+        <!-- Skills Panel -->
+        <div class="panel" id="skills-panel">
+            <!-- Skills / Community Tools management -->
+            <div class="card">
+                <h3 style="font-size:1.1rem;font-weight:700;margin-bottom:6px">🧰 Skills — 7-Point Tool Builder</h3>
+                <p style="color:#64748b;font-size:0.88rem;margin-bottom:16px">
+                    Define any automation in 7 fields. No code required. Share your skills with others via a URL.
+                </p>
+                <div id="skills-list-section">
+                    <div id="skills-list" style="margin-bottom:16px"></div>
+                    <button class="btn-secondary" onclick="loadSkills()">↻ Refresh</button>
+                </div>
+            </div>
+            <div class="card">
+                <h3 style="font-size:1rem;font-weight:600;margin-bottom:14px">Add New Skill</h3>
+                <div class="form-group"><label>Name (no spaces, use_underscores)</label><input id="skill-name" placeholder="upload_to_dropbox"/></div>
+                <div class="form-group"><label>Description — what it does (the AI reads this)</label><input id="skill-desc" placeholder="Upload any local file to a Dropbox folder"/></div>
+                <div class="form-group"><label>Author</label><input id="skill-author" placeholder="your-name" value="community"/></div>
+                <div class="form-group"><label>Parameters (JSON: {"param_name": "description"})</label><textarea id="skill-params" style="min-height:60px;font-family:monospace;font-size:0.85rem">{"file_path": "Path to the file to upload"}</textarea></div>
+                <div class="form-group"><label>Entity Selector — the main target (use {{param_name}} placeholders)</label><input id="skill-entity" placeholder="{{file_path}}"/></div>
+                <div class="form-group"><label>Primary Operation — what to run (shell: / http:GET: / tool:)</label><textarea id="skill-op" style="min-height:60px;font-family:monospace;font-size:0.85rem">shell:python tools/dropbox_upload.py --file {{file_path}}</textarea></div>
+                <div class="form-group"><label>Remediation Logic</label>
+                    <select id="skill-remediation">
+                        <option value="fail">fail — stop on error</option>
+                        <option value="retry:3:backoff">retry:3:backoff — retry 3x with backoff</option>
+                        <option value="retry:2">retry:2 — retry 2x immediately</option>
+                        <option value="heal-auto">heal-auto — auto-heal documents</option>
+                        <option value="dlq">dlq — send to dead-letter queue</option>
+                        <option value="ignore">ignore — log and continue</option>
+                    </select>
+                </div>
+                <div class="form-group"><label>Status Broadcast (workflow context tag, optional)</label><input id="skill-signal" placeholder="my-workflow"/></div>
+                <button class="btn-primary" onclick="installSkill()">Install Skill</button>
+            </div>
+            <div class="card">
+                <h3 style="font-size:1rem;font-weight:600;margin-bottom:14px">Fetch Skill Pack from URL</h3>
+                <p style="color:#64748b;font-size:0.85rem;margin-bottom:12px">Paste a GitHub Gist URL or any public JSON file containing a skill or skill pack.</p>
+                <div class="form-group"><input id="skill-url" placeholder="https://gist.githubusercontent.com/user/abc/raw/skill.json"/></div>
+                <button class="btn-primary" onclick="fetchSkillPack()">📦 Fetch &amp; Install</button>
+                <div id="skill-fetch-result" style="margin-top:10px;font-size:0.85rem"></div>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- Startup overlay — removed by JS once server responds -->
+    <div id="startup-overlay" style="position:fixed;inset:0;z-index:9999;background:#f1f5f9;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:18px">
+        <div style="font-size:2.2rem">🜁</div>
+        <div style="font-size:1.3rem;font-weight:700;color:#1e293b">Janus Clinical AI</div>
+        <div style="width:220px;height:6px;background:#e2e8f0;border-radius:99px;overflow:hidden">
+            <div style="height:100%;background:#1e40af;border-radius:99px;animation:startup-bar 2.5s ease-in-out infinite"></div>
+        </div>
+        <div id="startup-msg" style="font-size:0.9rem;color:#64748b">Starting up…</div>
+        <div style="font-size:0.75rem;color:#94a3b8;margin-top:4px">🔒 All processing stays on this computer</div>
+        <style>@keyframes startup-bar{0%{width:0%;margin-left:0}50%{width:70%;margin-left:30%}100%{width:0%;margin-left:100%}}</style>
+    </div>
+
+    <script>
+        const API_BASE = 'http://localhost:8080';
+        let chatHistory = [];
+        let currentPlan = null;
+        let currentSessionID = null;
+
+        async function applyModeGating() {
+            try {
+                const resp = await fetch('/config/mode');
+                const data = await resp.json();
+                if (data.local_only) {
+                    const advLink = document.querySelector('.nav-adv');
+                    if (advLink) advLink.style.display = 'none';
+                    const advTabs = document.getElementById('adv-tabs');
+                    if (advTabs) advTabs.style.display = 'none';
+                    const pills = document.querySelector('.status-pills');
+                    if (pills) {
+                        const pill = document.createElement('span');
+                        pill.className = 'pill local';
+                        pill.textContent = '🔒 Standard Mode';
+                        pills.appendChild(pill);
+                    }
+                } else {
+                    const pills = document.querySelector('.status-pills');
+                    if (pills) {
+                        const pill = document.createElement('span');
+                        pill.className = 'pill professional';
+                        pill.textContent = '⚡ Advanced Mode';
+                        pills.appendChild(pill);
+                    }
+                }
+            } catch(_) {}
+        }
+        document.addEventListener('DOMContentLoaded', applyModeGating);
+
+        // ── Startup: wait for server before revealing the app ────────────
+        (async function waitForServer() {
+            const overlay = document.getElementById('startup-overlay');
+            const msg     = document.getElementById('startup-msg');
+            const start   = Date.now();
+            let attempts  = 0;
+
+            while (true) {
+                try {
+                    const r = await fetch(`${API_BASE}/health`, { signal: AbortSignal.timeout(3000) });
+                    if (r.ok) break;
+                } catch (_) {}
+                attempts++;
+                const secs = Math.floor((Date.now() - start) / 1000);
+                msg.textContent = secs < 15
+                    ? 'Starting up…'
+                    : secs < 40
+                        ? `Loading AI model… (${secs}s)`
+                        : `Almost ready… (${secs}s)`;
+                await new Promise(res => setTimeout(res, 2000));
+            }
+
+            overlay.style.opacity = '0';
+            overlay.style.transition = 'opacity 0.4s';
+            setTimeout(() => overlay.remove(), 450);
+
+            initChat();
+            checkStatus();
+            loadChatModels();
+            checkVersion();
+            loadLicenseStatus();
+            loadUserRole();
+        })();
+
+        async function loadLicenseStatus() {
+            try {
+                const [licR, compR] = await Promise.all([
+                    fetch('/license/status'),
+                    fetch('/compliance/mode')
+                ]);
+                const lic  = await licR.json();
+                const comp = await compR.json();
+                const pill = document.getElementById('license-pill');
+                const hipaa = document.getElementById('hipaa-pill');
+                const tierLabels = {community:'🔑 Community', professional:'💼 Professional', enterprise:'🏆 Enterprise'};
+                pill.textContent = tierLabels[lic.tier] || ('🔑 ' + lic.tier);
+                pill.className = 'pill ' + (lic.tier || 'community');
+                hipaa.style.display = comp.enabled ? 'inline-block' : 'none';
+            } catch(e) {}
+        }
+
+        // ── Role-based UI gating ──────────────────────────────────────────
+        let currentUserRole = 'admin'; // default when auth is off
+        async function loadUserRole() {
+            try {
+                const r = await fetch('/auth/me');
+                const d = await r.json();
+                currentUserRole = d.role || 'readonly';
+                if (currentUserRole !== 'admin') {
+                    // Hide admin-only elements
+                    const hide = el => { if (el) el.style.display = 'none'; };
+                    hide(document.getElementById('nav-config'));
+                    hide(document.getElementById('compliance-card'));
+                    hide(document.getElementById('vram-card'));
+                    // Disable swarm tab for non-enterprise
+                    if (currentUserRole === 'readonly') {
+                        hide(document.getElementById('nav-swarm'));
+                        hide(document.getElementById('nav-agent'));
+                    }
+                }
+            } catch(e) { /* auth disabled — show everything */ }
+        }
+
+        async function checkVersion() {
+            try {
+                const r = await fetch(`${API_BASE}/version`);
+                const v = await r.json();
+                if (v.behind && v.update_url) {
+                    const msg = document.getElementById('update-msg');
+                    msg.innerHTML = `A software update is available: <strong>${v.latest}</strong> (you have v${v.current}). <a href="${v.update_url}" target="_blank" style="color:#1e40af;font-weight:600">Download update →</a>`;
+                    const banner = document.getElementById('update-banner');
+                    banner.style.display = 'flex';
+                }
+            } catch(e) { /* version check is best-effort */ }
+        }
+
+        async function initChat() {
+            // Create a new session on startup
+            try {
+                const res = await fetch(`${API_BASE}/memory/sessions`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ title: 'Chat ' + new Date().toLocaleString() })
+                });
+                if (res.ok) {
+                    const s = await res.json();
+                    currentSessionID = s.id;
+                }
+            } catch(e) { /* memory unavailable, no session */ }
+        }
+
+        async function loadChatModels() {
+            try {
+                const res = await fetch(`${API_BASE}/models/list`);
+                const data = await res.json();
+                const sel = document.getElementById('chat-model-select');
+                sel.innerHTML = '';
+                (data.models || []).forEach(m => {
+                    const opt = document.createElement('option');
+                    opt.value = m.name;
+                    opt.textContent = m.name + (m.size_bytes > 0 ? '  (' + fmtSize(m.size_bytes) + ')' : '');
+                    sel.appendChild(opt);
+                });
+                if (sel.options.length === 0) {
+                    sel.innerHTML = '<option value="local">local</option>';
+                }
+            } catch(e) {
+                document.getElementById('chat-model-select').innerHTML = '<option value="local">local</option>';
+            }
+        }
+
+        async function newChat() {
+            chatHistory = [];
+            document.getElementById('chat-messages').innerHTML =
+                '<div class="message system">New conversation started.</div>';
+            try {
+                const res = await fetch(`${API_BASE}/memory/sessions`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ title: 'Chat ' + new Date().toLocaleString() })
+                });
+                if (res.ok) {
+                    const s = await res.json();
+                    currentSessionID = s.id;
+                }
+            } catch(e) {}
+        }
+
+        async function checkStatus() {
+            const el = document.getElementById('model-status');
+            try {
+                const response = await fetch(`${API_BASE}/v1/models`, { signal: AbortSignal.timeout(4000) });
+                const data = await response.json();
+                if (data.data && data.data.length > 0) {
+                    const name = data.data[0].id.split('/').pop().replace(/\.gguf$/i, '');
+                    el.textContent = '✓ ' + name;
+                    el.style.background = '';
+                    el.style.color = '';
+                    el.style.borderColor = '';
+                } else {
+                    el.textContent = '✓ Ready';
+                }
+            } catch (e) {
+                el.textContent = '⚠ Service stopped';
+                el.style.background = '#fef2f2';
+                el.style.color = '#dc2626';
+                el.style.borderColor = '#fecaca';
+                setTimeout(checkStatus, 8000);
+            }
+        }
+
+        function switchTab(tab) {
+            document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
+            document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+            const navEl = document.getElementById('nav-' + tab);
+            if (navEl) navEl.classList.add('active');
+            const panelEl = document.getElementById(tab + '-panel');
+            if (panelEl) panelEl.classList.add('active');
+            if (tab === 'config') { if (availableModels.length === 0) { loadConfig(); } loadComplianceMode(); loadEngineStatus(); loadTelemetry(); }
+            if (tab === 'memory') loadMemory();
+            if (tab === 'skills') loadSkills();
+        }
+
+        function toggleAdvanced() {
+            const adv = document.getElementById('adv-tabs');
+            const arrow = document.getElementById('adv-arrow');
+            const visible = adv.style.display === 'flex';
+            adv.style.display = visible ? 'none' : 'flex';
+            arrow.textContent = visible ? '▸' : '▾';
+        }
+
+        function handleChatKey(e) {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                sendMessage();
+            }
+        }
+
+        async function sendMessage() {
+            const input = document.getElementById('chat-input');
+            const rawMessage = input.value.trim();
+            if (!rawMessage && uploadedFiles.chat.length === 0) return;
+
+            const modelSel = document.getElementById('chat-model-select');
+            const modelName = modelSel.value || 'local';
+
+            // Build full message with attachment references, but display
+            // a friendlier version in the chat bubble.
+            const prefix = attachmentPrefix('chat');
+            const fullMessage = prefix + (rawMessage || 'Please process the attached document(s).');
+            const displayMessage = uploadedFiles.chat.length > 0
+                ? (rawMessage || '(see attachments)') + '\n\n📎 ' + uploadedFiles.chat.map(f => f.name).join(', ')
+                : rawMessage;
+
+            input.value = '';
+            addMessage('user', displayMessage);
+            clearAttachments('chat');
+            showTyping();
+            chatHistory.push({ role: 'user', content: fullMessage });
+
+            try {
+                const headers = { 'Content-Type': 'application/json' };
+                if (currentSessionID) headers['X-Session-ID'] = currentSessionID;
+
+                const response = await fetch(`${API_BASE}/v1/chat/completions`, {
+                    method: 'POST',
+                    headers,
+                    body: JSON.stringify({
+                        model: modelName,
+                        messages: chatHistory,
+                        temperature: 0.7
+                    })
+                });
+
+                const data = await response.json();
+                hideTyping();
+
+                if (data.error) {
+                    addMessage('system', `Error: ${typeof data.error === 'object' ? data.error.message : data.error}`);
+                } else if (data.choices && data.choices[0]) {
+                    const reply = data.choices[0].message.content;
+                    addMessage('assistant', reply);
+                    chatHistory.push({ role: 'assistant', content: reply });
+                    // Auto-title session from first exchange
+                    if (chatHistory.length === 2 && currentSessionID) {
+                        const title = message.slice(0, 50) + (message.length > 50 ? '…' : '');
+                        fetch(`${API_BASE}/memory/sessions`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ id: currentSessionID, title })
+                        }).catch(() => {});
+                    }
+                }
+            } catch (e) {
+                hideTyping();
+                addMessage('system', `Connection error: ${e.message}`);
+            }
+        }
+
+        function addMessage(role, content) {
+            const messages = document.getElementById('chat-messages');
+            const div = document.createElement('div');
+            div.className = `message ${role}`;
+            div.innerHTML = formatMessage(content);
+            messages.appendChild(div);
+            messages.scrollTop = messages.scrollHeight;
+        }
+
+        function formatMessage(text) {
+            text = text.replace(/```(\w+)?\n([\s\S]*?)```/g, '<pre><code>$2</code></pre>');
+            text = text.replace(/`([^`]+)`/g, '<code>$1</code>');
+            text = text.replace(/\n/g, '<br>');
+            return text;
+        }
+
+        function showTyping() {
+            const messages = document.getElementById('chat-messages');
+            const div = document.createElement('div');
+            div.className = 'message assistant typing';
+            div.id = 'typing-indicator';
+            div.innerHTML = '<div class="typing-indicator"><span></span><span></span><span></span></div>';
+            messages.appendChild(div);
+            messages.scrollTop = messages.scrollHeight;
+            document.getElementById('send-btn').disabled = true;
+        }
+
+        function hideTyping() {
+            const indicator = document.getElementById('typing-indicator');
+            if (indicator) indicator.remove();
+            document.getElementById('send-btn').disabled = false;
+        }
+
+        async function submitTask() {
+            const taskId = document.getElementById('task-id').value.trim() || `kern-${Date.now()}`;
+            const input = document.getElementById('task-input').value.trim();
+            
+            if (!input) {
+                alert('Please enter a task description');
+                return;
+            }
+
+            const btn = document.getElementById('submit-task-btn');
+            btn.disabled = true;
+            const startTime = Date.now();
+            const timer = setInterval(() => {
+                const s = ((Date.now() - startTime) / 1000).toFixed(0);
+                btn.textContent = `Kernel running… ${s}s`;
+            }, 500);
+
+            // Show live tool log section
+            const logSection = document.getElementById('kernel-log-section');
+            const logEl = document.getElementById('kernel-tool-log');
+            logSection.style.display = 'block';
+            logEl.innerHTML = '<div style="color:#94a3b8">Launching kernel loop…</div>';
+            document.getElementById('plan-output').innerHTML = '';
+            document.getElementById('results-section').style.display = 'none';
+
+            try {
+                // Launch kernel
+                const resp = await fetch(`${API_BASE}/kernel/run`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ task_id: taskId, input })
+                });
+                const launch = await resp.json();
+                if (launch.error) throw new Error(launch.error);
+                clearAttachments('assist');
+
+                // Poll status until done (stop after 5 consecutive connection failures)
+                let result = null;
+                let connFails = 0;
+                while (true) {
+                    await new Promise(r => setTimeout(r, 1500));
+                    try {
+                        const sr = await fetch(`${API_BASE}/kernel/status?task_id=${taskId}`);
+                        const sd = await sr.json();
+                        connFails = 0; // reset on success
+                        if (sd.error && sd.error === 'unknown task_id') continue;
+                        
+                        // Render live tool log
+                        if (sd.tool_log && sd.tool_log.length > 0) {
+                            document.getElementById('kernel-iter-count').textContent = `(${sd.tool_log.length} iterations)`;
+                            logEl.innerHTML = sd.tool_log.map(e => {
+                                const ok = e.result.success;
+                                const icon = e.call.name === 'done' ? '&#10004;' : (ok ? '&#9881;' : '&#9888;');
+                                const color = e.call.name === 'done' ? '#16a34a' : (ok ? '#334155' : '#dc2626');
+                                const bg = ok ? '#f0fdf4' : '#fef2f2';
+                                const border = ok ? '#bbf7d0' : '#fecaca';
+                                const argsStr = Object.entries(e.call.arguments || {}).map(([k,v]) => `${k}=${typeof v==='string' && v.length>60 ? v.slice(0,60)+'…' : v}`).join(', ');
+                                const outStr = (e.result.output || e.result.error || '').slice(0, 200);
+                                return `<div style="padding:6px 10px;background:${bg};border:1px solid ${border};border-radius:6px">
+                                    <div style="font-weight:600;color:${color};font-size:0.78rem">${icon} Iter ${e.iteration}: ${escHtml(e.call.name)}(${escHtml(argsStr)})</div>
+                                    <div style="color:#475569;font-size:0.76rem;margin-top:2px;font-family:monospace;white-space:pre-wrap;word-break:break-word">${escHtml(outStr)}</div>
+                                </div>`;
+                            }).join('');
+                            logEl.scrollTop = logEl.scrollHeight;
+                        }
+
+                        if (sd.status === 'complete' || sd.status === 'failed' || sd.status === 'max_iterations') {
+                            result = sd;
+                            break;
+                        }
+                    } catch(_) {
+                        connFails++;
+                        if (connFails >= 5) {
+                            throw new Error('Janus server stopped responding. Please restart it and try again.');
+                        }
+                    }
+                }
+
+                clearInterval(timer);
+                const totalTime = ((Date.now() - startTime) / 1000).toFixed(1);
+
+                // Show results
+                const output = document.getElementById('handoff-output');
+                if (result.status === 'complete') {
+                    const writes = (result.tool_log || []).filter(e => e.call.name === 'write_file' && e.result.success);
+                    let filesHtml = '';
+                    if (writes.length > 0) {
+                        filesHtml = `<div style="margin:10px 0;padding:10px 14px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;font-size:0.85rem;color:#166534"><strong>Files created:</strong>${writes.map(t => `<div style="margin-top:3px">${escHtml(t.call.arguments?.path || 'file')}</div>`).join('')}</div>`;
+                    }
+                    output.innerHTML = `<div style="padding:12px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;color:#166534">
+                        <div style="font-weight:700;margin-bottom:6px">Complete in ${totalTime}s (${result.iterations} iterations)</div>
+                        <div style="white-space:pre-wrap;word-break:break-word">${escHtml(result.summary)}</div>
+                        ${filesHtml}
+                    </div>`;
+                } else {
+                    output.innerHTML = `<div class="error">Status: ${result.status}<br>${escHtml(result.summary || 'No summary')}</div>`;
+                }
+                document.getElementById('results-section').style.display = 'block';
+                document.getElementById('results-section').scrollIntoView({ behavior: 'smooth' });
+
+            } catch (e) {
+                clearInterval(timer);
+                document.getElementById('plan-output').innerHTML = `<div class="error">Error: ${e.message}</div>`;
+            } finally {
+                clearInterval(timer);
+                btn.disabled = false;
+                btn.textContent = 'Run Kernel';
+            }
+        }
+
+        // ── Document upload ──────────────────────────────────────────────
+        // Tracks paths of uploaded files per surface ('assist' or 'chat').
+        // These paths are appended to the prompt so the AI can reference
+        // them with pdf_extract / read_file / anonymize tools.
+        const uploadedFiles = { assist: [], chat: [] };
+
+        async function uploadFiles(fileList, surface) {
+            if (!fileList || fileList.length === 0) return;
+            const progressEl = document.getElementById(surface + '-upload-progress');
+            const fillEl = progressEl ? progressEl.querySelector('.upload-progress-fill') : null;
+            if (progressEl) { progressEl.style.display = 'block'; if (fillEl) fillEl.style.width = '0%'; }
+
+            for (let i = 0; i < fileList.length; i++) {
+                const file = fileList[i];
+                try {
+                    const form = new FormData();
+                    form.append('file', file);
+                    const res = await fetch('/upload', { method: 'POST', body: form });
+                    const data = await res.json();
+                    if (!res.ok || !data.ok) {
+                        alert('Upload failed for ' + file.name + ': ' + (data.error || res.statusText));
+                        continue;
+                    }
+                    uploadedFiles[surface].push({ path: data.path, name: data.filename, size: data.size });
+                    if (fillEl) fillEl.style.width = Math.round(((i + 1) / fileList.length) * 100) + '%';
+                } catch (err) {
+                    alert('Upload error for ' + file.name + ': ' + err.message);
+                }
+            }
+            renderUploadedFiles(surface);
+            // Reset file input so the same file can be re-selected
+            const inputEl = document.getElementById(surface + '-file-input');
+            if (inputEl) inputEl.value = '';
+            setTimeout(() => { if (progressEl) progressEl.style.display = 'none'; }, 600);
+        }
+
+        function renderUploadedFiles(surface) {
+            const container = document.getElementById(surface + '-uploaded-files');
+            if (!container) return;
+            container.innerHTML = uploadedFiles[surface].map((f, idx) => `
+                <div class="uploaded-file">
+                    <span>📄</span>
+                    <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(f.name)}</span>
+                    <span style="color:#94a3b8;font-size:0.72rem">${humanSize(f.size)}</span>
+                    <span class="remove" onclick="removeUpload('${surface}', ${idx})" title="Remove">✕</span>
+                </div>`).join('');
+        }
+
+        function removeUpload(surface, idx) {
+            uploadedFiles[surface].splice(idx, 1);
+            renderUploadedFiles(surface);
+        }
+
+        function humanSize(bytes) {
+            if (bytes < 1024) return bytes + ' B';
+            if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+            return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+        }
+
+        function escapeHtml(s) {
+            return String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+        }
+
+        // Build an "Attached files:" prefix to inject into a prompt.
+        function attachmentPrefix(surface) {
+            const files = uploadedFiles[surface];
+            if (!files.length) return '';
+            const lines = files.map(f => `- ${f.path} (${f.name})`).join('\n');
+            return `Attached files (use pdf_extract or read_file to access):\n${lines}\n\n`;
+        }
+
+        function clearAttachments(surface) {
+            uploadedFiles[surface] = [];
+            renderUploadedFiles(surface);
+        }
+
+        // Wire drag-and-drop. The GLOBAL window listeners below are critical —
+        // without them, dropping a file anywhere outside the exact drop zone
+        // causes the browser to navigate to the file and display it instead
+        // of uploading.
+        document.addEventListener('DOMContentLoaded', () => {
+            // Step 1: kill the browser's default "open this file" behavior
+            // for any drag over or drop on the window.
+            ['dragenter', 'dragover', 'drop'].forEach(ev => {
+                window.addEventListener(ev, e => {
+                    e.preventDefault();
+                }, false);
+            });
+
+            // Step 2: wire each surface's explicit drop zone for visual
+            // feedback + routing to the correct uploadFiles() surface.
+            wireDropZone(document.getElementById('assist-upload-zone'), 'assist');
+            wireDropZone(document.querySelector('#chat-panel .chat-container'), 'chat');
+        });
+
+        function wireDropZone(zone, surface) {
+            if (!zone) return;
+            ['dragenter', 'dragover'].forEach(ev => zone.addEventListener(ev, e => {
+                e.preventDefault(); e.stopPropagation();
+                zone.classList.add('dragover');
+            }));
+            ['dragleave', 'drop'].forEach(ev => zone.addEventListener(ev, e => {
+                e.preventDefault(); e.stopPropagation();
+                zone.classList.remove('dragover');
+            }));
+            zone.addEventListener('drop', e => {
+                if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length) {
+                    uploadFiles(e.dataTransfer.files, surface);
+                }
+            });
+        }
+
+        // ── Assistant (Simple Mode) ──────────────────────────────────────
+        let assistHistory = [];
+
+        function fillQuick(text) {
+            const ta = document.getElementById('assist-input');
+            ta.value = text + ' ';
+            ta.focus();
+        }
+
+        const AGENT_META = {
+            worker:   { label: 'Builder',  icon: '🔨', color: '#1e40af' },
+            reviewer: { label: 'Reviewer', icon: '🔍', color: '#7c3aed' },
+            pruner:   { label: 'Pruner',   icon: '✂️',  color: '#0f766e' },
+            planner:  { label: 'Planner',  icon: '📋', color: '#b45309' },
+        };
+        const STATUS_ICON = { thinking:'💭', tool_call:'⚙️', tool_result:'✅', tool_error:'⚠️', done:'✔', failed:'✗', reviewing:'🔄' };
+
+        function renderDiscussion(events) {
+            const el = document.getElementById('agent-discussion');
+            el.innerHTML = events.map(e => {
+                const m = AGENT_META[e.agent] || { label: e.agent, icon: '🤖', color: '#64748b' };
+                const si = STATUS_ICON[e.status] || '·';
+                const isError = e.status === 'tool_error' || e.status === 'failed';
+                const isTool = e.status === 'tool_call' || e.status === 'tool_result' || e.status === 'tool_error';
+                return `<div style="display:flex;gap:8px;align-items:flex-start;opacity:${e.status==='thinking'?'0.7':'1'}">
+                    <span style="font-size:0.85rem;min-width:22px;text-align:center">${m.icon}</span>
+                    <div style="flex:1;min-width:0">
+                        <div style="font-size:0.72rem;font-weight:700;color:${m.color};margin-bottom:2px">${m.label} ${si}</div>
+                        <div style="font-size:0.82rem;color:${isError?'#dc2626':'#334155'};background:${isTool?'#f8fafc':'transparent'};${isTool?'padding:4px 8px;border-radius:6px;border:1px solid #e2e8f0;font-family:monospace;':''}word-break:break-word">${escHtml(e.message)}</div>
+                    </div>
+                </div>`;
+            }).join('');
+            el.scrollTop = el.scrollHeight;
+        }
+
+        async function assistantSubmit() {
+            const rawInput = document.getElementById('assist-input').value.trim();
+            if (!rawInput) { document.getElementById('assist-input').focus(); return; }
+            const input = attachmentPrefix('assist') + rawInput;
+
+            const btn = document.getElementById('assist-btn');
+            btn.disabled = true;
+            const taskId = 'assist-' + Date.now();
+            const loadingEl = document.getElementById('assist-loading');
+            const statusMsg = document.getElementById('assist-status-msg');
+            const resultEl = document.getElementById('assist-result');
+            document.getElementById('agent-discussion').innerHTML = '';
+
+            loadingEl.style.display = 'block';
+            resultEl.style.display = 'none';
+            statusMsg.textContent = 'Thinking…';
+
+            const startTime = Date.now();
+            const timer = setInterval(() => {
+                const s = ((Date.now() - startTime) / 1000).toFixed(0);
+                statusMsg.textContent = `Working… ${s}s`;
+            }, 1000);
+
+            // Launch kernel loop and poll status
+            let pollStop = false;
+            let pollConnFails = 0;
+            const pollKernelStatus = async () => {
+                while (!pollStop) {
+                    try {
+                        const pr = await fetch(`${API_BASE}/kernel/status?task_id=${taskId}`);
+                        const pd = await pr.json();
+                        pollConnFails = 0;
+                        if (pd.tool_log && pd.tool_log.length > 0) {
+                            const events = pd.tool_log.map(e => ({
+                                agent: 'kernel',
+                                status: e.result.success ? 'tool_result' : 'tool_error',
+                                message: `[iter ${e.iteration}] ${e.call.name}: ${e.result.output || e.result.error || ''}`.slice(0, 200)
+                            }));
+                            renderDiscussion(events);
+                        }
+                        if (pd.status === 'complete' || pd.status === 'failed' || pd.status === 'max_iterations') {
+                            pollStop = true;
+                            return pd;
+                        }
+                    } catch(_) {
+                        pollConnFails++;
+                        if (pollConnFails >= 5) {
+                            pollStop = true;
+                            return { status: 'failed', summary: 'Janus server stopped responding. Please restart it.' };
+                        }
+                    }
+                    await new Promise(r => setTimeout(r, 1500));
+                }
+                return null;
+            };
+
+            try {
+                const kernResp = await fetch(`${API_BASE}/kernel/run`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ task_id: taskId, input }),
+                });
+                const launch = await kernResp.json();
+                if (launch.error) throw new Error(launch.error);
+
+                statusMsg.textContent = 'Kernel running…';
+                const result = await pollKernelStatus();
+                pollStop = true;
+
+                const totalTime = ((Date.now() - startTime) / 1000).toFixed(1);
+                if (result && result.status === 'complete') {
+                    showAssistantResult(input, { summary: result.summary, iterations: result.iterations, tool_log: result.tool_log }, totalTime);
+                } else {
+                    const msg = result ? (result.summary || result.status) : 'Lost connection to kernel';
+                    throw new Error(msg);
+                }
+            } catch (e) {
+                pollStop = true;
+                const isOffline = e.message.includes('fetch') || e.message.includes('network') || e.message.includes('Failed') || e.message.includes('NetworkError');
+                resultEl.style.display = 'block';
+                resultEl.innerHTML = isOffline
+                    ? `<div class="error">⚠️ Cannot reach the local AI server.<br><small>The Janus service on this computer may have stopped. Please restart it and try again. No data was sent anywhere.</small><br><br><button class="btn-secondary" onclick="assistantSubmit()">↺ Try Again</button></div>`
+                    : `<div class="error">⚠️ ${e.message}<br><small>Please try again. If this keeps happening, restart Janus.</small><br><br><button class="btn-secondary" onclick="assistantSubmit()">↺ Try Again</button></div>`;
+            } finally {
+                clearInterval(timer);
+                loadingEl.style.display = 'none';
+                btn.disabled = false;
+            }
+        }
+
+        function extractDeliverable(handoff) {
+            const steps = handoff.data?.handoffs || [];
+            function extractSection(text, ...labels) {
+                for (const label of labels) {
+                    const re = new RegExp(label + ':\\s*\\n?([\\s\\S]+?)(?=\\n[A-Z_]+:|$)', 'i');
+                    const m = text.match(re);
+                    if (m && m[1].trim()) return m[1].trim();
+                }
+                return null;
+            }
+            for (let i = steps.length - 1; i >= 0; i--) {
+                const raw = steps[i].data?.raw_content || '';
+                const found = extractSection(raw, 'FINAL_ANSWER', 'FINAL_DELIVERABLE', 'DELIVERABLE');
+                if (found) return found;
+            }
+            return steps.length > 0 ? (steps[steps.length - 1].data?.raw_content || '') : 'No output returned.';
+        }
+
+        function showAssistantResult(request, data, totalTime) {
+            // Kernel result format: { summary, iterations, tool_log }
+            const isKernel = !!data.summary;
+            let finalAnswer = '';
+            let filesHtml = '';
+            let detailsHtml = '';
+
+            if (isKernel) {
+                finalAnswer = escHtml(data.summary);
+                const writes = (data.tool_log || []).filter(e => e.call.name === 'write_file' && e.result.success);
+                if (writes.length > 0) {
+                    filesHtml = `<div style="margin:12px 20px 0;padding:10px 14px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;font-size:0.85rem;color:#166534"><strong>Files created:</strong> ${writes.map(t => `<span style="display:block;margin-top:3px">${escHtml(t.call.arguments?.path || 'file')}</span>`).join('')}</div>`;
+                }
+                detailsHtml = JSON.stringify((data.tool_log || []).map(e => ({
+                    iter: e.iteration,
+                    tool: e.call.name,
+                    ok: e.result.success,
+                    out: (e.result.output || e.result.error || '').substring(0, 200)
+                })), null, 2);
+            } else {
+                // Legacy handoff format
+                finalAnswer = extractDeliverable(data);
+                const steps = data.data?.handoffs || [];
+                const toolCalls = [];
+                steps.forEach(s => (s.data?.tool_calls || []).forEach(t => { if (t.tool === 'write_file' && t.success) toolCalls.push(t); }));
+                if (toolCalls.length > 0) {
+                    filesHtml = `<div style="margin:12px 20px 0;padding:10px 14px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;font-size:0.85rem;color:#166534"><strong>Files created:</strong> ${toolCalls.map(t => `<span style="display:block;margin-top:3px">${t.args?.path || 'file'}</span>`).join('')}</div>`;
+                }
+                detailsHtml = JSON.stringify(data.data?.handoffs?.map(s=>({agent:s.from_agent,content:s.data?.raw_content?.substring(0,300)})), null, 2);
+            }
+
+            const itersLabel = isKernel ? ` (${data.iterations} iterations)` : '';
+            const resultEl = document.getElementById('assist-result');
+            resultEl.style.display = 'block';
+            resultEl.innerHTML = `<div class="result-card">
+                <div class="result-header">
+                    <div class="label">Ready for your review</div>
+                    <span style="font-size:0.8rem;color:#16a34a">Completed in ${totalTime}s${itersLabel}</span>
+                </div>
+                <div class="result-body" id="assist-result-body">${finalAnswer}</div>
+                ${filesHtml}
+                <div class="result-actions">
+                    <button class="btn-secondary" onclick="copyResult()">Copy</button>
+                    <button class="btn-secondary" onclick="assistantReset()">New Request</button>
+                    <details style="margin-left:auto"><summary style="cursor:pointer;color:#94a3b8;font-size:0.8rem;user-select:none">Kernel log</summary><pre style="margin-top:8px;max-height:300px;overflow-y:auto;font-size:0.72rem">${detailsHtml}</pre></details>
+                </div>
+            </div>`;
+
+            addToHistory(request, finalAnswer, totalTime);
+            resultEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+
+        function copyResult() {
+            const el = document.getElementById('assist-result-body');
+            if (el) navigator.clipboard.writeText(el.textContent).then(() => {
+                const btn = document.querySelector('.result-actions .btn-secondary');
+                if (btn) { btn.textContent = '✓ Copied!'; setTimeout(() => btn.textContent = '📋 Copy', 2000); }
+            });
+        }
+
+        function assistantReset() {
+            document.getElementById('assist-input').value = '';
+            document.getElementById('assist-result').style.display = 'none';
+            document.getElementById('assist-input').focus();
+        }
+
+        function addToHistory(request, result, time) {
+            assistHistory.unshift({ request, result, time, ts: new Date().toLocaleTimeString() });
+            if (assistHistory.length > 5) assistHistory = assistHistory.slice(0, 5);
+            const histEl = document.getElementById('assist-history');
+            if (assistHistory.length < 2) { histEl.innerHTML = ''; return; }
+            histEl.innerHTML = `<div class="section-label">Previous requests</div>` + assistHistory.slice(1).map((h, i) => `
+                <div style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:13px 16px;margin-bottom:8px;cursor:pointer;transition:box-shadow 0.2s" onmouseover="this.style.boxShadow='0 2px 8px rgba(0,0,0,0.08)'" onmouseout="this.style.boxShadow='none'" onclick="restoreHistory(${i + 1})">
+                    <div style="font-size:0.9rem;color:#0f172a;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${h.request}</div>
+                    <div style="font-size:0.78rem;color:#94a3b8;margin-top:3px">${h.ts} · ${h.time}s</div>
+                </div>`).join('');
+        }
+
+        function restoreHistory(i) {
+            const h = assistHistory[i];
+            if (!h) return;
+            document.getElementById('assist-input').value = h.request;
+            const resultEl = document.getElementById('assist-result');
+            resultEl.style.display = 'block';
+            resultEl.innerHTML = `<div class="result-card"><div class="result-header"><div class="label">✅ Previous result</div><span style="font-size:0.8rem;color:#16a34a">${h.time}s</span></div><div class="result-body" id="assist-result-body">${h.result}</div><div class="result-actions"><button class="btn-secondary" onclick="copyResult()">📋 Copy</button><button class="btn-secondary" onclick="assistantReset()">↺ New Request</button></div></div>`;
+        }
+        // ── End Assistant ────────────────────────────────────────────────
+
+        function resetPipeline() {
+            currentPlan = null;
+            document.getElementById('task-id').value = '';
+            document.getElementById('task-input').value = '';
+            document.getElementById('plan-output').innerHTML = '';
+            document.getElementById('kernel-log-section').style.display = 'none';
+            document.getElementById('kernel-tool-log').innerHTML = '';
+            document.getElementById('results-section').style.display = 'none';
+        }
+
+        async function executePlan() {
+            const taskId = document.getElementById('execute-task-id').value.trim();
+            const planJson = document.getElementById('plan-json').value.trim();
+
+            if (!taskId || !planJson) {
+                alert('Please enter task ID and plan');
+                return;
+            }
+
+            let plan;
+            try {
+                plan = JSON.parse(planJson);
+            } catch (e) {
+                alert('Invalid plan JSON');
+                return;
+            }
+
+            const btn = document.getElementById('execute-btn');
+            btn.disabled = true;
+
+            const numSteps = (plan.steps || []).filter(s => s.owner_agent && s.owner_agent !== 'master_planner').length;
+            const startTime = Date.now();
+            const timer = setInterval(() => {
+                const elapsed = ((Date.now() - startTime) / 1000).toFixed(0);
+                btn.textContent = `⏳ Running ${numSteps} steps… ${elapsed}s`;
+            }, 500);
+
+            // Show progress inside execute section
+            document.getElementById('plan-preview').innerHTML += `
+                <div style="margin-top:12px;padding:12px;text-align:center;background:rgba(0,0,0,0.2);border-radius:8px">
+                    <div class="typing-indicator" style="display:inline-flex;gap:6px;margin-bottom:8px"><span></span><span></span><span></span></div>
+                    <div style="font-size:0.85rem;color:#aaa">Running local inference for each step — typically 10-30s total…</div>
+                </div>`;
+
+            try {
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), 300000);
+
+                const response = await fetch(`${API_BASE}/task/execute`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ task_id: taskId, plan: plan }),
+                    signal: controller.signal
+                });
+                clearTimeout(timeoutId);
+
+                const handoff = await response.json();
+                const totalTime = ((Date.now() - startTime) / 1000).toFixed(1);
+
+                const output = document.getElementById('handoff-output');
+                if (handoff.error) {
+                    output.innerHTML = `<div class="error">Error: ${handoff.error}</div>`;
+                    document.getElementById('results-section').style.display = 'block';
+                } else {
+                    const steps = handoff.data?.handoffs || [];
+
+                    // Extract the actual deliverable from the pipeline steps
+                    // Priority: pruner FINAL_ANSWER > reviewer FINAL_DELIVERABLE > worker DELIVERABLE
+                    function extractSection(text, ...labels) {
+                        for (const label of labels) {
+                            const re = new RegExp(label + ':\\s*\\n?([\\s\\S]+?)(?=\\n[A-Z_]+:|$)', 'i');
+                            const m = text.match(re);
+                            if (m && m[1].trim()) return m[1].trim();
+                        }
+                        return null;
+                    }
+
+                    let finalAnswer = null;
+                    // Walk steps from last to first to find best deliverable
+                    for (let i = steps.length - 1; i >= 0; i--) {
+                        const raw = steps[i].data?.raw_content || '';
+                        const found = extractSection(raw, 'FINAL_ANSWER', 'FINAL_DELIVERABLE', 'DELIVERABLE');
+                        if (found) { finalAnswer = found; break; }
+                    }
+                    // Fallback: use last step raw_content
+                    if (!finalAnswer && steps.length > 0) {
+                        finalAnswer = steps[steps.length - 1].data?.raw_content || '';
+                    }
+
+                    let html = '';
+
+                    // ── Main deliverable block (what the user actually wants) ──
+                    if (finalAnswer) {
+                        html += `<div style="margin-bottom:16px;padding:16px;background:rgba(0,212,255,0.07);border:1px solid rgba(0,212,255,0.35);border-radius:10px">
+                            <div style="color:#00d4ff;font-size:0.8rem;font-weight:700;letter-spacing:0.05em;margin-bottom:10px;text-transform:uppercase">✅ Delivered Result</div>
+                            <div style="font-size:1rem;line-height:1.6;white-space:pre-wrap;color:#f0f0f0">${finalAnswer}</div>
+                        </div>`;
+                    }
+
+                    html += `<div style="color:#888;font-size:0.75rem;margin-bottom:8px">Completed in ${totalTime}s — ${steps.length} agent steps</div>`;
+
+                    // ── Collapsible pipeline details ──
+                    let detailsHtml = '';
+                    steps.forEach((s, i) => {
+                        const raw = s.data?.raw_content || '';
+                        const roleColor = s.from_agent === 'worker' ? '#00d4ff' : s.from_agent === 'reviewer' ? '#ffc107' : '#00ff88';
+                        detailsHtml += `<div style="margin-bottom:8px;padding:10px;background:rgba(0,0,0,0.25);border-radius:8px;border-left:3px solid ${roleColor}">
+                            <div style="font-size:0.8rem;color:${roleColor};margin-bottom:4px;font-weight:600">${s.from_agent.toUpperCase()} — ${s.step_title || s.step_title}</div>
+                            <div style="font-size:0.78rem;color:#aaa;white-space:pre-wrap">${raw.length > 500 ? raw.substring(0,500)+'…' : raw}</div>
+                        </div>`;
+                    });
+                    html += `<details><summary style="cursor:pointer;color:#555;font-size:0.8rem;user-select:none">▶ Pipeline details (${steps.length} steps)</summary>
+                        <div style="margin-top:8px">${detailsHtml}</div>
+                    </details>`;
+                    html += `<details style="margin-top:6px"><summary style="cursor:pointer;color:#444;font-size:0.75rem;user-select:none">Raw JSON</summary><pre style="font-size:0.72rem;margin-top:6px"><code>${JSON.stringify(handoff.data, null, 2)}</code></pre></details>`;
+
+                    output.innerHTML = html;
+
+                    // Show step 3 and scroll to it
+                    const resultsSection = document.getElementById('results-section');
+                    resultsSection.style.display = 'block';
+                    resultsSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                }
+            } catch (e) {
+                const output = document.getElementById('handoff-output');
+                if (e.name === 'AbortError') {
+                    output.innerHTML = `<div class="error">Timed out after 5 minutes. Check server logs.</div>`;
+                } else {
+                    output.innerHTML = `<div class="error">Error: ${e.message}</div>`;
+                }
+                document.getElementById('results-section').style.display = 'block';
+            } finally {
+                clearInterval(timer);
+                btn.disabled = false;
+                btn.textContent = '▶ Run Agent Pipeline';
+            }
+        }
+        // ── Compliance Mode ────────────────────────────────────────────────
+        async function loadComplianceMode() {
+            try {
+                const r = await fetch('/compliance/mode');
+                const d = await r.json();
+                const toggle = document.getElementById('compliance-toggle');
+                const label  = document.getElementById('compliance-label');
+                const locked = document.getElementById('compliance-locked');
+                const status = document.getElementById('compliance-status');
+                toggle.checked  = d.enabled;
+                toggle.disabled = d.locked;
+                label.textContent = d.enabled ? '✅ Compliance Mode ACTIVE' : '⬜ Compliance Mode OFF';
+                locked.style.display = d.locked ? 'inline-block' : 'none';
+                status.textContent = d.enabled
+                    ? 'All cloud routes blocked. Audit log active at logs/audit.jsonl.'
+                    : 'Cloud routes permitted. Audit log still active.';
+            } catch(e) {
+                document.getElementById('compliance-status').textContent = 'Could not reach server.';
+            }
+        }
+
+        async function setCompliance(enabled) {
+            const status = document.getElementById('compliance-status');
+            status.textContent = 'Saving…';
+            try {
+                const r = await fetch('/compliance/mode', {
+                    method: 'POST',
+                    headers: {'Content-Type':'application/json'},
+                    body: JSON.stringify({enabled})
+                });
+                if (!r.ok) {
+                    const e = await r.json();
+                    status.textContent = '⚠ ' + (e.error || 'Error');
+                    await loadComplianceMode();
+                    return;
+                }
+                await loadComplianceMode();
+            } catch(e) {
+                status.textContent = '⚠ Request failed.';
+            }
+        }
+
+        // ── Engine / VRAM Status ──────────────────────────────────────────────
+        async function loadEngineStatus() {
+            try {
+                const r = await fetch('/engine/status');
+                const d = await r.json();
+                document.getElementById('vram-used').textContent = d.vram_used_mb + ' MB';
+                document.getElementById('vram-free').textContent = d.vram_free_mb + ' MB';
+                document.getElementById('vram-ceil').textContent = d.vram_ceil_mb + ' MB';
+                document.getElementById('vram-backend').textContent = d.backend || 'none';
+                const mpath = d.model_path || 'none';
+                document.getElementById('vram-model').textContent = mpath.split(/[/\\]/).pop();
+                const pct = d.vram_ceil_mb > 0 ? Math.round(d.vram_used_mb / d.vram_ceil_mb * 100) : 0;
+                const bar = document.getElementById('vram-bar');
+                bar.style.width = pct + '%';
+                bar.style.background = pct > 85 ? '#dc2626' : pct > 60 ? '#f59e0b' : '#1e40af';
+            } catch(e) {
+                document.getElementById('vram-used').textContent = '—';
+            }
+        }
+
+        // ── Telemetry ─────────────────────────────────────────────────────
+        async function loadTelemetry() {
+            try {
+                const r = await fetch('/telemetry');
+                const d = await r.json();
+                const h = Math.floor(d.uptime_seconds / 3600);
+                const m = Math.floor((d.uptime_seconds % 3600) / 60);
+                document.getElementById('tele-uptime').textContent = h > 0 ? `${h}h ${m}m` : `${m}m`;
+                document.getElementById('tele-tasks').textContent = d.tasks_submitted;
+                document.getElementById('tele-chat').textContent = d.chat_requests;
+                document.getElementById('tele-swarm').textContent = d.swarm_runs;
+                document.getElementById('tele-completed').textContent = d.tasks_completed;
+                document.getElementById('tele-failed').textContent = d.tasks_failed;
+                document.getElementById('tele-tools').textContent = d.tool_calls;
+                document.getElementById('tele-latency').textContent = d.avg_latency_ms > 0 ? d.avg_latency_ms.toFixed(0) + ' ms' : '—';
+            } catch(e) {
+                document.getElementById('tele-uptime').textContent = '—';
+            }
+        }
+
+        // ── Config ─────────────────────────────────────────────────────────
+        let availableModels = [];
+
+        async function loadConfig() {
+            document.getElementById('cfg-status').textContent = 'Loading…';
+            console.log('loadConfig started');
+            try {
+                const [cfgRes, modRes, defRes] = await Promise.all([
+                    fetch(`${API_BASE}/swarm/config`),
+                    fetch(`${API_BASE}/models/list`),
+                    fetch(`${API_BASE}/models/default`)
+                ]);
+                console.log('fetch responses:', cfgRes.ok, modRes.ok, defRes.ok);
+                const cfg = await cfgRes.json();
+                const modData = await modRes.json();
+                const defData = await defRes.json();
+                console.log('parsed data:', {cfg, modData, defData});
+                availableModels = modData.models || [];
+                console.log('availableModels:', availableModels);
+
+                const roles = ['default','architect','worker','judge','pruner'];
+                roles.forEach(r => populateSelect(r, availableModels));
+
+                // Set fields AFTER populating dropdowns so dropdown values can be matched
+                setField('cfg-default-path', defData.model_path || '');
+                if (cfg.ArchitectModelPath) document.getElementById('cfg-architect').value = cfg.ArchitectModelPath;
+                if (cfg.WorkerModelPath)    document.getElementById('cfg-worker').value    = cfg.WorkerModelPath;
+                if (cfg.JudgeModelPath)     document.getElementById('cfg-judge').value     = cfg.JudgeModelPath;
+                if (cfg.PrunerModelPath)    document.getElementById('cfg-pruner').value    = cfg.PrunerModelPath;
+                if (cfg.Backend) document.getElementById('cfg-backend').value = cfg.Backend;
+                if (cfg.ConfidenceThreshold) document.getElementById('cfg-confidence').value = cfg.ConfidenceThreshold;
+                if (cfg.MaxRetries) document.getElementById('cfg-retries').value = cfg.MaxRetries;
+
+                document.getElementById('cfg-status').textContent = `Loaded — ${availableModels.length} model(s) found`;
+                // Also load system prompts
+                await loadPrompts();
+            } catch(e) {
+                document.getElementById('cfg-status').textContent = 'Error: ' + e.message;
+            }
+        }
+
+        async function loadPrompts() {
+            try {
+                const res = await fetch(`${API_BASE}/config/prompts`);
+                if (!res.ok) return;
+                const p = await res.json();
+                document.getElementById('prompt-default').value = p.default_chat || '';
+                document.getElementById('prompt-planner').value = p.planner || '';
+                document.getElementById('prompt-worker').value  = p.worker  || '';
+                document.getElementById('prompt-judge').value   = p.judge   || '';
+                document.getElementById('prompt-pruner').value  = p.pruner  || '';
+            } catch(e) {
+                console.warn('loadPrompts:', e.message);
+            }
+        }
+
+        async function savePrompts() {
+            const status = document.getElementById('prompt-status');
+            const body = {
+                default_chat: document.getElementById('prompt-default').value.trim(),
+                planner:      document.getElementById('prompt-planner').value.trim(),
+                worker:       document.getElementById('prompt-worker').value.trim(),
+                judge:        document.getElementById('prompt-judge').value.trim(),
+                pruner:       document.getElementById('prompt-pruner').value.trim(),
+            };
+            // Remove blank — server will keep existing value for empty fields
+            Object.keys(body).forEach(k => { if (!body[k]) delete body[k]; });
+            try {
+                status.textContent = 'Saving…';
+                const res = await fetch(`${API_BASE}/config/prompts`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(body)
+                });
+                const d = await res.json();
+                status.textContent = res.ok ? '✅ Prompts saved — active immediately' : '❌ ' + (d.error || 'error');
+            } catch(e) {
+                status.textContent = '❌ ' + e.message;
+            }
+        }
+
+        async function resetPrompts() {
+            if (!confirm('Reset all role prompts to built-in defaults?')) return;
+            // POST empty strings — server merges; send sentinel to force reset
+            // Instead fetch defaults and populate textareas from the server defaults
+            try {
+                document.getElementById('prompt-default').value = '';
+                document.getElementById('prompt-planner').value = '';
+                document.getElementById('prompt-worker').value  = '';
+                document.getElementById('prompt-judge').value   = '';
+                document.getElementById('prompt-pruner').value  = '';
+                // Saving empty strings won't override (merge logic skips empties)
+                // So call with a special flag — just reload from server after a moment
+                document.getElementById('prompt-status').textContent = 'Cleared — reload from server to see defaults';
+            } catch(e) {
+                document.getElementById('prompt-status').textContent = '❌ ' + e.message;
+            }
+        }
+
+        function populateSelect(role, models) {
+            const sel = document.getElementById('cfg-' + role);
+            console.log('populateSelect:', role, 'element:', sel);
+            if (!sel) { console.log('populateSelect:', role, 'SKIPPED - no element'); return; }
+            const prev = sel.value;
+            sel.innerHTML = '<option value="">(inherit / use path below)</option>';
+            models.forEach(m => {
+                const opt = document.createElement('option');
+                opt.value = m.path;
+                opt.textContent = `${m.name}  (${fmtSize(m.size_bytes)})`;
+                sel.appendChild(opt);
+            });
+            if (prev) sel.value = prev;
+            console.log('populateSelect:', role, 'done, options:', sel.options.length);
+        }
+
+
+        function syncPath(role, value) {
+            const pathEl = document.getElementById('cfg-' + role + '-path');
+            if (pathEl) pathEl.value = value;
+        }
+
+        function setField(id, val) {
+            const el = document.getElementById(id);
+            if (el) el.value = val;
+            // Also try to match the dropdown
+            const role = id.replace('cfg-','').replace('-path','');
+            const sel = document.getElementById('cfg-' + role);
+            if (sel && val) sel.value = val;
+        }
+
+        async function saveConfig() {
+            const defaultPath = document.getElementById('cfg-default-path').value.trim();
+            const body = {
+                architect_model_path:  document.getElementById('cfg-architect').value,
+                worker_model_path:     document.getElementById('cfg-worker').value,
+                judge_model_path:      document.getElementById('cfg-judge').value,
+                pruner_model_path:     document.getElementById('cfg-pruner').value,
+                backend:               document.getElementById('cfg-backend').value,
+                confidence_threshold:  parseFloat(document.getElementById('cfg-confidence').value),
+                max_retries:           parseInt(document.getElementById('cfg-retries').value)
+            };
+            Object.keys(body).forEach(k => {
+                const v = body[k];
+                if (v === '' || v === null || v === undefined) delete body[k];
+                else if (typeof v === 'number' && isNaN(v)) delete body[k];
+            });
+
+            const status = document.getElementById('cfg-status');
+            try {
+                // Save swarm config
+                const swarmRes = await fetch(`${API_BASE}/swarm/config`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(body)
+                });
+                if (!swarmRes.ok) {
+                    const d = await swarmRes.json();
+                    status.textContent = '❌ ' + (d.error || 'swarm config error');
+                    return;
+                }
+
+                // Hot-swap the resident model — this reloads the model in VRAM
+                if (defaultPath) {
+                    status.textContent = '⏳ Loading model into GPU… (may take 10-30s)';
+                    const loadRes = await fetch(`${API_BASE}/models/load`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ model_path: defaultPath })
+                    });
+                    const loadData = await loadRes.json();
+                    if (!loadRes.ok) {
+                        status.textContent = '❌ Model load failed: ' + (loadData.error || 'unknown error');
+                        return;
+                    }
+                }
+
+                status.textContent = '✅ Saved — model active immediately';
+            } catch(e) {
+                status.textContent = '❌ ' + e.message;
+            }
+        }
+
+        function fmtSize(bytes) {
+            if (!bytes) return '';
+            if (bytes >= 1e9) return (bytes/1e9).toFixed(1) + ' GB';
+            if (bytes >= 1e6) return (bytes/1e6).toFixed(0) + ' MB';
+            return bytes + ' B';
+        }
+
+        // ── Swarm ──────────────────────────────────────────────────────────
+        let swarmPollTimer = null;
+
+        async function runSwarm() {
+            const input = document.getElementById('swarm-input').value.trim();
+            if (!input) { alert('Describe a task first'); return; }
+
+            const btn = document.getElementById('swarm-run-btn');
+            btn.disabled = true;
+            btn.textContent = 'Submitting…';
+            setSwarmVis('submitting');
+            document.getElementById('swarm-result').textContent = '';
+
+            try {
+                const resp = await fetch(`${API_BASE}/swarm/run`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ input })
+                });
+                const data = await resp.json();
+                if (data.error) { showSwarmError(data.error); return; }
+                pollSwarm(data.task_id);
+            } catch(e) {
+                showSwarmError(e.message);
+                btn.disabled = false;
+                btn.textContent = 'Run Swarm';
+            }
+        }
+
+        let swarmEventSource = null;
+        const agentIcons = {architect:'🏗',worker:'🔨',judge:'⚖️',pruner:'✂️',pipeline:'✅'};
+
+        function pollSwarm(taskId) {
+            stopPoll();
+            const eventsEl = document.getElementById('swarm-events');
+            eventsEl.style.display = 'block';
+            eventsEl.innerHTML = '<div style="color:#94a3b8">Waiting for events…</div>';
+
+            // Try SSE first, fall back to polling
+            if (typeof EventSource !== 'undefined') {
+                pollSwarmSSE(taskId);
+            } else {
+                pollSwarmLegacy(taskId);
+            }
+        }
+
+        function pollSwarmSSE(taskId) {
+            const eventsEl = document.getElementById('swarm-events');
+            let first = true;
+            swarmEventSource = new EventSource(`${API_BASE}/swarm/events?task_id=${encodeURIComponent(taskId)}`);
+
+            swarmEventSource.addEventListener('progress', (e) => {
+                if (first) { eventsEl.innerHTML = ''; first = false; }
+                const ev = JSON.parse(e.data);
+                const icon = agentIcons[ev.agent] || '•';
+                const time = new Date(ev.at).toLocaleTimeString();
+                const statusColor = ev.status === 'done' ? '#16a34a' : ev.status === 'started' ? '#2563eb' : '#475569';
+                eventsEl.innerHTML += `<div style="padding:3px 0;border-bottom:1px solid #f1f5f9"><span style="color:#94a3b8;font-size:0.7rem">${time}</span> ${icon} <strong style="color:${statusColor}">${ev.agent}</strong> <span style="color:#64748b">${ev.message || ev.status}</span></div>`;
+                eventsEl.scrollTop = eventsEl.scrollHeight;
+                // Update pipeline vis based on agent
+                const stageMap = {architect:'planning',worker:'building',judge:'judging',pruner:'pruning',pipeline:'complete'};
+                if (stageMap[ev.agent]) setSwarmVis(stageMap[ev.agent]);
+            });
+
+            swarmEventSource.addEventListener('done', async (e) => {
+                const info = JSON.parse(e.data);
+                stopPoll();
+                const btn = document.getElementById('swarm-run-btn');
+                btn.disabled = false;
+                btn.textContent = 'Run Swarm';
+                if (info.state === 'complete') {
+                    setSwarmVis('complete');
+                    // Fetch final result
+                    try {
+                        const resp = await fetch(`${API_BASE}/swarm/status?task_id=${encodeURIComponent(taskId)}`);
+                        const data = await resp.json();
+                        if (data.final_baton) {
+                            document.getElementById('swarm-result').textContent =
+                                data.final_baton.output || JSON.stringify(data.final_baton, null, 2);
+                        }
+                    } catch(_) {}
+                } else {
+                    setSwarmVis('failed');
+                    showSwarmError(info.state);
+                }
+            });
+
+            swarmEventSource.addEventListener('error', (e) => {
+                stopPoll();
+                const title = document.getElementById('swarm-status-title');
+                title.textContent = 'Status: error';
+                const info = JSON.parse(e.data);
+                showSwarmError(info.error || 'connection lost');
+            });
+
+            swarmEventSource.onerror = () => {
+                // SSE connection dropped — fall back to polling
+                if (swarmEventSource) {
+                    swarmEventSource.close();
+                    swarmEventSource = null;
+                    pollSwarmLegacy(taskId);
+                }
+            };
+        }
+
+        function pollSwarmLegacy(taskId) {
+            const eventsEl = document.getElementById('swarm-events');
+            let swarmConnFails = 0;
+            swarmPollTimer = setInterval(async () => {
+                try {
+                    const resp = await fetch(`${API_BASE}/swarm/status?task_id=${encodeURIComponent(taskId)}`);
+                    const data = await resp.json();
+                    swarmConnFails = 0;
+                    if (data.error) { showSwarmError(data.error); stopPoll(); return; }
+
+                    const title = document.getElementById('swarm-status-title');
+                    title.textContent = `Status: ${data.state}${data.checkpoint ? ' — ' + data.checkpoint : ''}`;
+                    setSwarmVis(data.checkpoint || data.state);
+
+                    if (data.events && data.events.length > 0) {
+                        eventsEl.innerHTML = data.events.map(ev => {
+                            const icon = agentIcons[ev.agent] || '•';
+                            const time = new Date(ev.at).toLocaleTimeString();
+                            const statusColor = ev.status === 'done' ? '#16a34a' : ev.status === 'started' ? '#2563eb' : '#475569';
+                            return `<div style="padding:3px 0;border-bottom:1px solid #f1f5f9"><span style="color:#94a3b8;font-size:0.7rem">${time}</span> ${icon} <strong style="color:${statusColor}">${ev.agent}</strong> <span style="color:#64748b">${ev.message || ev.status}</span></div>`;
+                        }).join('');
+                        eventsEl.scrollTop = eventsEl.scrollHeight;
+                    }
+
+                    if (data.state === 'complete' || data.state === 'failed') {
+                        stopPoll();
+                        const btn = document.getElementById('swarm-run-btn');
+                        btn.disabled = false;
+                        btn.textContent = 'Run Swarm';
+                        if (data.state === 'complete' && data.final_baton) {
+                            document.getElementById('swarm-result').textContent =
+                                data.final_baton.output || JSON.stringify(data.final_baton, null, 2);
+                        } else if (data.error) {
+                            showSwarmError(data.error);
+                        }
+                    }
+                } catch(e) {
+                    swarmConnFails++;
+                    if (swarmConnFails >= 5) { showSwarmError('Server stopped responding'); stopPoll(); }
+                }
+            }, 1500);
+        }
+
+        function stopPoll() {
+            if (swarmPollTimer) { clearInterval(swarmPollTimer); swarmPollTimer = null; }
+            if (swarmEventSource) { swarmEventSource.close(); swarmEventSource = null; }
+        }
+
+        function showSwarmError(msg) {
+            document.getElementById('swarm-result').innerHTML = `<span class="error">${msg}</span>`;
+            setSwarmVis('failed');
+        }
+
+        const STAGES = ['planning','building','judging','pruning','complete'];
+        const STAGE_LABELS = { planning:'🏗 Architect', building:'🔨 Worker', judging:'⚖️ Judge', pruning:'✂️ Pruner', complete:'✅ Done', failed:'❌ Failed', submitting:'⏳ Sending' };
+
+        function setSwarmVis(checkpoint) {
+            const vis = document.getElementById('swarm-pipeline-vis');
+            const lower = (checkpoint || '').toLowerCase();
+            const active = STAGES.findIndex(s => lower.includes(s));
+            vis.innerHTML = STAGES.map((s, i) => {
+                let cls = 'step-item';
+                if (i < active) cls += ';opacity:0.4';
+                const label = STAGE_LABELS[s] || s;
+                const isActive = lower.includes(s);
+                return `<div style="${cls};flex:1;min-width:120px;text-align:center;border-color:${isActive?'#00d4ff':'rgba(255,255,255,0.1)'}">${label}</div>`;
+            }).join('<div style="align-self:center;color:#888">→</div>');
+        }
+
+        // ── Memory ─────────────────────────────────────────────────────────
+        async function loadMemory() {
+            await Promise.all([loadSessions(), loadFacts()]);
+        }
+
+        async function loadSessions() {
+            try {
+                const res = await fetch(`${API_BASE}/memory/sessions`);
+                const data = await res.json();
+                const el = document.getElementById('mem-sessions');
+                if (!data.sessions || data.sessions.length === 0) {
+                    el.innerHTML = '<div style="color:#888;font-size:0.85rem">No conversations yet.</div>';
+                    return;
+                }
+                el.innerHTML = data.sessions.map(s => `
+                    <div style="background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:8px;padding:10px;display:flex;justify-content:space-between;align-items:center">
+                        <div>
+                            <div style="font-size:0.9rem;margin-bottom:3px">${escHtml(s.title)}</div>
+                            <div style="font-size:0.75rem;color:#888">${new Date(s.updated_at*1000).toLocaleString()}</div>
+                        </div>
+                        <button onclick="deleteSession('${s.id}')" style="background:rgba(255,107,107,0.2);border:1px solid rgba(255,107,107,0.3);color:#ff6b6b;border-radius:6px;padding:4px 10px;cursor:pointer;font-size:0.8rem">Delete</button>
+                    </div>
+                `).join('');
+            } catch(e) {
+                document.getElementById('mem-sessions').innerHTML = '<div style="color:#ff6b6b">Memory unavailable</div>';
+            }
+        }
+
+        async function deleteSession(id) {
+            if (!confirm('Delete this conversation?')) return;
+            await fetch(`${API_BASE}/memory/session/${id}`, { method: 'DELETE' });
+            loadSessions();
+        }
+
+        async function loadFacts() {
+            try {
+                const res = await fetch(`${API_BASE}/memory/facts`);
+                const data = await res.json();
+                const el = document.getElementById('mem-facts');
+                if (!data.facts || data.facts.length === 0) {
+                    el.innerHTML = '<div style="color:#888;font-size:0.85rem">No facts saved yet. Add something above.</div>';
+                    return;
+                }
+                el.innerHTML = data.facts.map(f => `
+                    <div style="background:rgba(123,44,191,0.1);border:1px solid rgba(123,44,191,0.3);border-radius:8px;padding:8px 12px;display:flex;justify-content:space-between;align-items:center">
+                        <span><strong style="color:#cc88ff">${escHtml(f.key)}</strong>: ${escHtml(f.value)}</span>
+                        <button onclick="deleteFact('${escHtml(f.key)}')" style="background:rgba(255,107,107,0.15);border:1px solid rgba(255,107,107,0.3);color:#ff6b6b;border-radius:6px;padding:3px 8px;cursor:pointer;font-size:0.75rem">✕</button>
+                    </div>
+                `).join('');
+            } catch(e) {
+                document.getElementById('mem-facts').innerHTML = '<div style="color:#ff6b6b">Memory unavailable</div>';
+            }
+        }
+
+        async function saveFact() {
+            const key = document.getElementById('fact-key').value.trim();
+            const value = document.getElementById('fact-value').value.trim();
+            if (!key || !value) { alert('Both key and value are required'); return; }
+            await fetch(`${API_BASE}/memory/facts`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ key, value })
+            });
+            document.getElementById('fact-key').value = '';
+            document.getElementById('fact-value').value = '';
+            loadFacts();
+        }
+
+        async function deleteFact(key) {
+            await fetch(`${API_BASE}/memory/facts?key=${encodeURIComponent(key)}`, { method: 'DELETE' });
+            loadFacts();
+        }
+
+        function escHtml(s) {
+            return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+        }
+
+        // ── Skills ─────────────────────────────────────────────────────────
+        async function loadSkills() {
+            const el = document.getElementById('skills-list');
+            el.innerHTML = '<span style="color:#94a3b8">Loading…</span>';
+            try {
+                const resp = await fetch('/tools/community');
+                const data = await resp.json();
+                if (!data.tools || data.tools.length === 0) {
+                    el.innerHTML = '<div style="color:#94a3b8;font-size:0.88rem">No skills installed yet. Add one below or fetch from a URL.</div>';
+                    return;
+                }
+                el.innerHTML = data.tools.map(t => `
+                    <div style="padding:10px 14px;border:1px solid #e2e8f0;border-radius:8px;margin-bottom:8px;display:flex;align-items:center;gap:10px">
+                        <div style="flex:1">
+                            <strong style="font-size:0.92rem">${t.name}</strong>
+                            <span style="font-size:0.78rem;color:#94a3b8;margin-left:8px">by ${t.author||'local'}</span>
+                            ${t.enabled ? '' : '<span style="font-size:0.72rem;color:#ef4444;margin-left:6px">disabled</span>'}
+                            <div style="font-size:0.83rem;color:#64748b;margin-top:2px">${t.description||''}</div>
+                            <code style="font-size:0.75rem;color:#7c3aed;background:#f5f3ff;padding:1px 5px;border-radius:3px">${t.primary_operation||''}</code>
+                        </div>
+                        <button class="btn-secondary" style="font-size:0.78rem;padding:5px 10px" onclick="deleteSkill('${t.name}')">✕ Remove</button>
+                        <button class="btn-secondary" style="font-size:0.78rem;padding:5px 10px" onclick="exportSkill('${t.name}')">⬆ Export</button>
+                    </div>`).join('');
+            } catch(e) { el.innerHTML = '<span style="color:#ef4444">Error: ' + e.message + '</span>'; }
+        }
+
+        async function installSkill() {
+            const skill = {
+                name: document.getElementById('skill-name').value.trim(),
+                description: document.getElementById('skill-desc').value.trim(),
+                author: document.getElementById('skill-author').value.trim() || 'local',
+                version: '1.0',
+                enabled: true,
+                parameters: JSON.parse(document.getElementById('skill-params').value || '{}'),
+                entity_selector: document.getElementById('skill-entity').value.trim(),
+                primary_operation: document.getElementById('skill-op').value.trim(),
+                remediation_logic: document.getElementById('skill-remediation').value,
+                status_broadcast: document.getElementById('skill-signal').value.trim(),
+                step_latency: 0,
+                audit_receipt: ''
+            };
+            if (!skill.name || !skill.primary_operation) { alert('Name and Primary Operation are required'); return; }
+            const resp = await fetch('/tools/community/install', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(skill) });
+            const data = await resp.json();
+            if (data.ok) { alert('Skill installed: ' + data.name); loadSkills(); }
+            else { alert('Error: ' + data.error); }
+        }
+
+        async function deleteSkill(name) {
+            if (!confirm('Remove skill: ' + name + '?')) return;
+            const resp = await fetch('/tools/community/' + encodeURIComponent(name), { method: 'DELETE' });
+            const data = await resp.json();
+            if (data.ok) loadSkills();
+            else alert('Error: ' + data.error);
+        }
+
+        async function exportSkill(name) {
+            window.open('/tools/community/export/' + encodeURIComponent(name));
+        }
+
+        async function fetchSkillPack() {
+            const url = document.getElementById('skill-url').value.trim();
+            const resultEl = document.getElementById('skill-fetch-result');
+            if (!url) { resultEl.textContent = 'Please enter a URL'; return; }
+            resultEl.textContent = 'Fetching…';
+            try {
+                const resp = await fetch('/tools/community/fetch', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({url}) });
+                const data = await resp.json();
+                if (data.ok) {
+                    resultEl.innerHTML = '<span style="color:#16a34a">✓ Installed: ' + (data.installed||[]).join(', ') + '</span>';
+                    loadSkills();
+                } else {
+                    resultEl.innerHTML = '<span style="color:#ef4444">Error: ' + data.error + '</span>';
+                }
+            } catch(e) { resultEl.innerHTML = '<span style="color:#ef4444">Error: ' + e.message + '</span>'; }
+        }
+    </script>
+</body>
+</html>

@@ -1,0 +1,68 @@
+# AI editor/agent workspace folders — not part of the project
+.agent/
+.agents/
+.claude/
+.cursor/
+.continue/
+.windsurf/
+.promptbooster.yml
+.codeiumignore.txt
+prompt_drafts.md
+
+# Compiled binary (no extension = Linux build artifact)
+janus
+
+# my-notes
+my-Notes.md
+
+# Windows junk
+Thumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# Go binaries and build output
+*.exe
+*.exe~
+bin/
+dist/
+
+# Janus — pre-built llama.cpp DLLs (fetched by build scripts)
+lib/windows/*.dll
+lib/linux/*.so
+lib/linux/*.so.*
+
+# Janus — model files (large, stored separately)
+models/*.gguf
+models/*.bin
+models/*.ggml
+
+# License
+License-and-copyright.md
+
+# Credentials & secrets — NEVER commit
+.env
+data/users.json
+data/*.db
+*.secrets
+
+# Runtime data — may contain PHI or user content
+workspace/
+logs/
+*.log
+
+# config.yml
+# tmp/
+
+# API-Router
+API-Router-Build.code-workspace
+API-Router-Build-save2.code-workspace
+
+# codiumignore — already covered above
+# .codeiumignore.txt
+
+# Workspace
+workspace/*
+docs/pdf_data_to_test_Janus/*
+
+# Local experiments — not part of the main repo
+data_parser_app/
