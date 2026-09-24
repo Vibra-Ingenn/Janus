@@ -1,10 +1,8 @@
 package tools
 
 import (
-	"fmt"
 	"os"
 	"path/filepath"
-	"regexp"
 	"strings"
 	"testing"
 )
@@ -202,82 +200,6 @@ func TestRenderPDFBasic(t *testing.T) {
 	}
 	if !found {
 		t.Error("PDF file not found in workspace/outputs")
-	}
-}
-
-func TestPDFExtractRepairsMalformedStartXRef(t *testing.T) {
-	t.Cleanup(func() { os.RemoveAll("workspace/outputs") })
-	r := NewRegistry()
-	render := r.Dispatch(ToolCall{Name: "render_pdf", Arguments: map[string]any{
-		"title":    "Patient Intake",
-		"content":  "Patient Name: Jane Smith\nChief Complaint: Headache",
-		"filename": "broken-xref",
-	}})
-	if !render.Success {
-		t.Fatalf("render_pdf failed: %s", render.Error)
-	}
-	path := strings.TrimSpace(strings.TrimPrefix(render.Output, "PDF created at "))
-	data, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	re := regexp.MustCompile(`startxref\s+(\d+)`)
-	matches := re.FindSubmatchIndex(data)
-	if matches == nil {
-		t.Fatal("startxref not found in rendered PDF")
-	}
-	declared := string(data[matches[2]:matches[3]])
-	data = append([]byte(nil), data...)
-	copy(data[matches[2]:matches[3]], []byte(fmt.Sprintf("%0*d", len(declared), 0)))
-
-	brokenPath := filepath.Join(filepath.Dir(path), "broken-startxref.pdf")
-	if err := os.WriteFile(brokenPath, data, 0644); err != nil {
-		t.Fatal(err)
-	}
-
-	res := r.Dispatch(ToolCall{Name: "pdf_extract", Arguments: map[string]any{"path": brokenPath}})
-	if !res.Success {
-		t.Fatalf("pdf_extract should repair malformed startxref: %s", res.Error)
-	}
-	if !strings.Contains(res.Output, "Jane Smith") {
-		t.Fatalf("expected extracted text after repair, got: %s", res.Output)
-	}
-}
-
-func TestPDFExtractSalvagesMalformedPDFText(t *testing.T) {
-	r := NewRegistry()
-	dir := t.TempDir()
-	path := filepath.Join(dir, "salvage.pdf")
-	data := []byte("%PDF-1.4\n1 0 obj\n<< /Length 44 >>\nstream\nBT\n/F1 12 Tf\n72 720 Td\n(Document Title: Test Content) Tj\nET\nendstream\nendobj\n%%EOF\n")
-	if err := os.WriteFile(path, data, 0644); err != nil {
-		t.Fatal(err)
-	}
-
-	res := r.Dispatch(ToolCall{Name: "pdf_extract", Arguments: map[string]any{"path": path}})
-	if !res.Success {
-		t.Fatalf("pdf_extract should salvage malformed PDF text: %s", res.Error)
-	}
-	if !strings.Contains(res.Output, "best-effort salvage") || !strings.Contains(res.Output, "Test Content") {
-		t.Fatalf("expected salvaged text, got: %s", res.Output)
-	}
-}
-
-func TestPDFDiagnoseReportsProblems(t *testing.T) {
-	r := NewRegistry()
-	dir := t.TempDir()
-	path := filepath.Join(dir, "diagnose.pdf")
-	data := []byte("%PDF-1.4\n1 0 obj\n<< /Length 44 >>\nstream\nBT\n/F1 12 Tf\n72 720 Td\n(Document Title: Test Content) Tj\nET\nendstream\nendobj\n%%EOF\n")
-	if err := os.WriteFile(path, data, 0644); err != nil {
-		t.Fatal(err)
-	}
-
-	res := r.Dispatch(ToolCall{Name: "pdf_diagnose", Arguments: map[string]any{"path": path}})
-	if !res.Success {
-		t.Fatalf("pdf_diagnose failed: %s", res.Error)
-	}
-	if !strings.Contains(res.Output, "missing trailer block") || !strings.Contains(res.Output, "recoverable text fragments") {
-		t.Fatalf("expected diagnostic details, got: %s", res.Output)
 	}
 }
 

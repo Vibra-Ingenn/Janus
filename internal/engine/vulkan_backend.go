@@ -1,6 +1,8 @@
 package engine
 
 import (
+	"math"
+	"math/rand"
 	"context"
 	"errors"
 	"fmt"
@@ -30,19 +32,54 @@ import (
 //   - genMu (Mutex): serialises concurrent Generate calls — llama_context
 //     is NOT thread-safe for concurrent decode calls.
 type VulkanBackend struct {
+	temp         float64
+	topP         float64
+
 	lib          *bridge.LlamaLib
 	libPath      string
 	nGPULayers   int
 	maxNewTokens int    // 0 = unlimited (bounded only by context window)
-	nCtxSize     uint32 // context window size; 0 = use default (8192)
+	nCtxSize     uint32 // context window size; 0 = use default (16384)
 
-	stateMu  sync.RWMutex
-	genMu    sync.Mutex
-	rawModel uintptr
-	rawVocab uintptr // llama_vocab* — needed by newer llama.cpp for tokenize
-	rawCtx   uintptr
-	loaded   bool
+	stateMu    sync.RWMutex
+	genMu      sync.Mutex
+	errMu      sync.Mutex
+	lastGenErr error
+	rawModel   uintptr
+	rawVocab   uintptr // llama_vocab* — needed by newer llama.cpp for tokenize
+	rawCtx     uintptr
+	loaded     bool
+	modelPath  string
 }
+
+func (v *VulkanBackend) setLastGenErr(err error) {
+	v.errMu.Lock()
+	defer v.errMu.Unlock()
+	v.lastGenErr = err
+}
+
+func (v *VulkanBackend) LastGenErr() error {
+	v.errMu.Lock()
+	defer v.errMu.Unlock()
+	return v.lastGenErr
+}
+
+func (v *VulkanBackend) SetLoadParams(ctxSize uint32, gpuLayers int) {
+	v.stateMu.Lock()
+	defer v.stateMu.Unlock()
+	if ctxSize > 0 {
+		v.nCtxSize = ctxSize
+	}
+	v.nGPULayers = gpuLayers
+}
+
+func (v *VulkanBackend) SetSampler(temp float64, topP float64) {
+	v.stateMu.Lock()
+	defer v.stateMu.Unlock()
+	v.temp = temp
+	v.topP = topP
+}
+
 
 // NewVulkanBackend creates a VulkanBackend by loading the llama.cpp shared
 // library at libPath.
@@ -70,32 +107,71 @@ func NewVulkanBackend(libPath string, nGPULayers, maxNewTokens int) (*VulkanBack
 		lib.BackendLoadAll()
 	}
 
-	nCtxSize := uint32(8192)
+	nCtxSize := uint32(16384)
 	if s := os.Getenv("JANUS_CTX_SIZE"); s != "" {
 		if n, err := strconv.Atoi(s); err == nil && n > 0 {
 			nCtxSize = uint32(n)
 		}
 	}
 
-	return &VulkanBackend{
+		return &VulkanBackend{
 		lib:          lib,
 		libPath:      libPath,
 		nGPULayers:   nGPULayers,
 		maxNewTokens: maxNewTokens,
 		nCtxSize:     nCtxSize,
+		temp:         0.7,
+		topP:         0.9,
 	}, nil
 }
 
 // LoadModel loads the .gguf model at path into GPU VRAM.
 // On GPU OOM, automatically retries with nGPULayers=0 (CPU fallback).
 // Safe to call multiple times — previous model is unloaded first.
+func (v *VulkanBackend) ActiveModelPath() string {
+	v.stateMu.RLock()
+	defer v.stateMu.RUnlock()
+	return v.modelPath
+}
+
+func (v *VulkanBackend) ActiveModelLoaded() bool {
+	v.stateMu.RLock()
+	defer v.stateMu.RUnlock()
+	return v.loaded
+}
+
+func (v *VulkanBackend) ActiveCtxSize() uint32 {
+	v.stateMu.RLock()
+	defer v.stateMu.RUnlock()
+	if v.nCtxSize == 0 {
+		return 8192
+	}
+	return v.nCtxSize
+}
+
+func (v *VulkanBackend) ActiveGPULayers() int {
+	v.stateMu.RLock()
+	defer v.stateMu.RUnlock()
+	return v.nGPULayers
+}
+
 func (v *VulkanBackend) LoadModel(path string) error {
+	resolved, err := ResolveModelPath(path)
+	if err != nil {
+		return err
+	}
+
 	v.stateMu.Lock()
 	defer v.stateMu.Unlock()
 
+	if v.loaded && v.modelPath == resolved {
+		log.Printf("engine: model %q is already loaded, skipping load", DisplayModelPath(resolved))
+		return nil
+	}
+
 	v.unloadLocked()
 
-	err := v.tryLoadLocked(path, v.nGPULayers)
+	err = v.tryLoadLocked(resolved, v.nGPULayers)
 	if err != nil {
 		if errors.Is(err, ErrGPUOOM) {
 			log.Printf("janus/engine: GPU OOM loading %q — retrying on CPU", path)
@@ -145,6 +221,7 @@ func (v *VulkanBackend) tryLoadLocked(path string, nLayers int) error {
 
 	v.rawModel = model
 	v.rawCtx = ctx
+	v.modelPath = path
 
 	// Newer llama.cpp (b5000+): tokenize takes llama_vocab* not llama_model*.
 	if v.lib.ModelGetVocab != nil {
@@ -154,9 +231,13 @@ func (v *VulkanBackend) tryLoadLocked(path string, nLayers int) error {
 
 	v.loaded = true
 
-	// Track VRAM usage in the global budget.
+	// Track VRAM usage in the global budget (weights + KV context estimate).
 	if fi, err := os.Stat(path); err == nil {
-		estimate := EstimateGGUF(fi.Size())
+		nCtx := v.nCtxSize
+		if nCtx == 0 {
+			nCtx = 8192
+		}
+		estimate := EstimateModelVRAM(fi.Size(), nCtx)
 		if claimErr := GlobalBudget.Claim("vulkan-primary", estimate); claimErr != nil {
 			log.Printf("engine: VRAM budget warning: %v (model loaded anyway)", claimErr)
 		}
@@ -174,14 +255,16 @@ func (v *VulkanBackend) Tokenize(text string) ([]int32, error) {
 	if !v.loaded {
 		return nil, ErrModelNotLoaded
 	}
+	if len(text) == 0 {
+		return []int32{}, nil
+	}
 
 	maxTokens := int32(len(text) + 16)
 	buf := make([]int32, maxTokens)
 
-	// Use vocab handle for tokenize (newer llama.cpp b5000+ API).
 	tokTarget := v.rawVocab
 	if tokTarget == 0 {
-		tokTarget = v.rawModel // fallback for older builds
+		tokTarget = v.rawModel
 	}
 	n := v.lib.Tokenize(
 		tokTarget,
@@ -208,6 +291,10 @@ func (v *VulkanBackend) Tokenize(text string) ([]int32, error) {
 // Generation uses greedy sampling (argmax over logits).
 // The KV cache is cleared before each call so contexts do not bleed.
 func (v *VulkanBackend) Generate(ctx context.Context, tokens []int32) (<-chan string, error) {
+	return v.generateWithLimit(ctx, tokens, v.maxNewTokens)
+}
+
+func (v *VulkanBackend) generateWithLimit(ctx context.Context, tokens []int32, maxNewTokens int) (<-chan string, error) {
 	v.stateMu.RLock()
 	if !v.loaded {
 		v.stateMu.RUnlock()
@@ -220,6 +307,7 @@ func (v *VulkanBackend) Generate(ctx context.Context, tokens []int32) (<-chan st
 	}
 
 	ch := make(chan string, 64)
+	v.setLastGenErr(nil)
 
 	go func() {
 		defer v.stateMu.RUnlock()
@@ -249,8 +337,8 @@ func (v *VulkanBackend) Generate(ctx context.Context, tokens []int32) (<-chan st
 
 		// Compute hard stop position (context window or user-supplied limit).
 		stopPos := nCtx
-		if v.maxNewTokens > 0 {
-			if lim := len(tokens) + v.maxNewTokens; lim < stopPos {
+		if maxNewTokens > 0 {
+			if lim := len(tokens) + maxNewTokens; lim < stopPos {
 				stopPos = lim
 			}
 		}
@@ -262,6 +350,9 @@ func (v *VulkanBackend) Generate(ctx context.Context, tokens []int32) (<-chan st
 		if rc != 0 {
 			if bridge.IsOOMResult(rc) {
 				log.Printf("janus/engine: GPU OOM during prefill (rc=%d)", rc)
+				v.setLastGenErr(ErrGPUOOM)
+			} else {
+				v.setLastGenErr(fmt.Errorf("janus/engine: prefill failed rc=%d", rc))
 			}
 			return
 		}
@@ -290,23 +381,22 @@ func (v *VulkanBackend) Generate(ctx context.Context, tokens []int32) (<-chan st
 
 			// Get logits for the token that had logits enabled in the last batch.
 			logitsPtr := v.lib.GetLogitsIth(v.rawCtx, logitsIdx)
-			if logitsPtr == 0 {
+			if logitsPtr == nil {
 				break
 			}
-			logits := unsafe.Slice((*float32)(unsafe.Pointer(logitsPtr)), nVocab)
+			logits := unsafe.Slice((*float32)(logitsPtr), nVocab)
 
-			// Greedy sample: argmax over vocabulary.
-			best := int32(0)
-			bestVal := logits[0]
-			for i := 1; i < nVocab; i++ {
-				if logits[i] > bestVal {
-					bestVal = logits[i]
-					best = int32(i)
-				}
-			}
+			// Temperature and Top-P Sampler
+			best := sampleLogits(logits, v.temp, v.topP)
 			runtime.KeepAlive(logits)
 
-			if best == eosToken || (eotToken >= 0 && best == eotToken) {
+			// Universal end-of-generation check: is_eog catches EVERY stop token
+			// for this model (EOS, EOT, <|eot_id|>, <end_of_turn>, harmony end
+			// tokens, etc.). Relying only on TokenEOS/TokenEOT misses model-
+			// specific end tokens and causes runaway/looping generation. Fall
+			// back to the explicit EOS/EOT comparison on older builds.
+			if (v.lib.TokenIsEOG != nil && v.lib.TokenIsEOG(vocabTarget, best)) ||
+				best == eosToken || (eotToken >= 0 && best == eotToken) {
 				log.Printf("engine: generate: stop token at pos=%d (generated %d tokens)", pos, pos-len(tokens))
 				break
 			}
@@ -360,6 +450,11 @@ func (v *VulkanBackend) Generate(ctx context.Context, tokens []int32) (<-chan st
 			rc = v.lib.Decode(v.rawCtx, next.ptr())
 			runtime.KeepAlive(next)
 			if rc != 0 {
+				if bridge.IsOOMResult(rc) {
+					v.setLastGenErr(ErrGPUOOM)
+				} else {
+					v.setLastGenErr(fmt.Errorf("janus/engine: decode failed rc=%d", rc))
+				}
 				break
 			}
 			logitsIdx = 0 // single-token batch: logits at index 0
@@ -387,152 +482,34 @@ func (v *VulkanBackend) Predict(ctx context.Context, prompt string) (string, err
 	for tok := range stream {
 		sb.WriteString(tok)
 	}
+	if genErr := v.LastGenErr(); genErr != nil {
+		return "", genErr
+	}
 	return cleanOutput(sb.String()), ctx.Err()
 }
 
-// PredictConstrained generates grammar-constrained output (e.g. tool-call JSON).
-// grammarStr is a GBNF grammar; grammarRoot is the entry rule (e.g. "root").
-// Returns the raw constrained text (guaranteed to match the grammar).
-func (v *VulkanBackend) PredictConstrained(ctx context.Context, prompt, grammarStr, grammarRoot string) (string, error) {
+// PredictWithLimit is like Predict, but lets HTTP/API callers honor a
+// per-request max_tokens value without mutating the backend-wide default used
+// by kernel and tool loops.
+func (v *VulkanBackend) PredictWithLimit(ctx context.Context, prompt string, maxNewTokens int) (string, error) {
 	tokens, err := v.Tokenize(prompt)
 	if err != nil {
 		return "", err
 	}
 
-	v.stateMu.RLock()
-	if !v.loaded {
-		v.stateMu.RUnlock()
-		return "", ErrModelNotLoaded
+	stream, err := v.generateWithLimit(ctx, tokens, maxNewTokens)
+	if err != nil {
+		return "", err
 	}
 
-	// Check sampler API availability.
-	if v.lib.SamplerChainInit == nil || v.lib.SamplerInitGrammar == nil {
-		v.stateMu.RUnlock()
-		return "", fmt.Errorf("janus/engine: sampler/grammar API not available in DLL")
-	}
-
-	defer v.stateMu.RUnlock()
-
-	v.genMu.Lock()
-	defer v.genMu.Unlock()
-
-	// Clear memory (KV cache / recurrent state).
-	v.clearMemory()
-
-	vocabTarget := v.rawVocab
-	if vocabTarget == 0 {
-		vocabTarget = v.rawModel
-	}
-	eosToken := v.lib.TokenEOS(vocabTarget)
-	eotToken := int32(-1)
-	if v.lib.TokenEOT != nil {
-		eotToken = v.lib.TokenEOT(vocabTarget)
-	}
-
-	// Build sampler chain: grammar → greedy.
-	chain := v.lib.SamplerChainInit(0) // no_perf = false
-	if chain == 0 {
-		return "", fmt.Errorf("janus/engine: SamplerChainInit returned NULL")
-	}
-	defer v.lib.SamplerFree(chain)
-
-	grammarSampler := v.lib.SamplerInitGrammar(vocabTarget, grammarStr, grammarRoot)
-	if grammarSampler == 0 {
-		return "", fmt.Errorf("janus/engine: SamplerInitGrammar returned NULL")
-	}
-	v.lib.SamplerChainAdd(chain, grammarSampler)
-
-	greedySampler := v.lib.SamplerInitGreedy()
-	if greedySampler != 0 {
-		v.lib.SamplerChainAdd(chain, greedySampler)
-	}
-
-	// Prefill — chunked to handle prompts > n_batch.
-	rc, lastChunk := v.chunkedPrefill(tokens)
-	if rc != 0 {
-		return "", fmt.Errorf("janus/engine: prefill failed rc=%d", rc)
-	}
-
-	// Constrained generation: cap at 512 new tokens.
-	// The <think>-block abort below is the primary guard against runaway generation.
-	// 512 is enough for write_file with substantial content while still bounding cost.
-	nCtx := int(v.lib.NCtx(v.rawCtx))
-	stopPos := nCtx
-	maxNew := 512
-	if v.maxNewTokens > 0 && v.maxNewTokens < maxNew {
-		maxNew = v.maxNewTokens
-	}
-	if lim := len(tokens) + maxNew; lim < stopPos {
-		stopPos = lim
-	}
-
-	pos := len(tokens)
-	logitsIdx := int32(lastChunk - 1)
-	pieceBuf := make([]byte, 32)
 	var sb strings.Builder
-	startPos := pos // for progress logging
-
-	for pos < stopPos {
-		select {
-		case <-ctx.Done():
-			return sb.String(), ctx.Err()
-		default:
-		}
-
-		// Progress heartbeat every 25 tokens so logs stay alive.
-		generated := pos - startPos
-		if generated > 0 && generated%25 == 0 {
-			log.Printf("engine: constrained generate: %d tokens so far…", generated)
-		}
-
-		// Sample using the constrained chain.
-		best := v.lib.SamplerSample(chain, v.rawCtx, logitsIdx)
-
-		if best == eosToken || (eotToken >= 0 && best == eotToken) {
-			break
-		}
-
-		// Detokenize.
-		n := v.lib.TokenToPiece(vocabTarget, best, uintptr(unsafe.Pointer(&pieceBuf[0])), int32(len(pieceBuf)), 0, 0)
-		if n < 0 {
-			pieceBuf = make([]byte, -n+1)
-			n = v.lib.TokenToPiece(vocabTarget, best, uintptr(unsafe.Pointer(&pieceBuf[0])), int32(len(pieceBuf)), 0, 0)
-		}
-		runtime.KeepAlive(pieceBuf)
-		if n > 0 {
-			sb.Write(pieceBuf[:n])
-		}
-
-		out := sb.String()
-
-		// Abort if the model is embedding a <think> block inside a JSON string.
-		// DeepSeek-R1 does this when confused; it inflates output to hundreds of
-		// tokens and never produces a useful tool call. Force a retry instead.
-		if strings.Contains(out, "<think>") {
-			log.Printf("engine: constrained generate: aborting — <think> block detected inside JSON string (model is reasoning inside grammar output)")
-			return "", fmt.Errorf("model emitted <think> block inside constrained JSON — retry")
-		}
-
-		// Check for ChatML stop sequences.
-		for _, ss := range []string{"<|im_end|>", "<|end|>", "<|eot_id|>"} {
-			if strings.Contains(out, ss) {
-				return strings.TrimSuffix(strings.TrimSpace(out), ss), nil
-			}
-		}
-
-		// Decode next token.
-		next := newBatch([]int32{best}, int32(pos), true)
-		rc = v.lib.Decode(v.rawCtx, next.ptr())
-		runtime.KeepAlive(next)
-		if rc != 0 {
-			break
-		}
-		logitsIdx = 0
-		pos++
+	for tok := range stream {
+		sb.WriteString(tok)
 	}
-
-	log.Printf("engine: constrained generate: %d tokens", pos-startPos)
-	return strings.TrimSpace(sb.String()), nil
+	if genErr := v.LastGenErr(); genErr != nil {
+		return "", genErr
+	}
+	return cleanOutput(sb.String()), ctx.Err()
 }
 
 // cleanOutput strips ChatML stop sequences and <think>...</think> reasoning blocks.
@@ -594,6 +571,7 @@ func (v *VulkanBackend) unloadLocked() {
 	}
 	v.rawVocab = 0
 	v.loaded = false
+	v.modelPath = ""
 	GlobalBudget.Release("vulkan-primary")
 }
 
@@ -698,3 +676,104 @@ func newBatch(tokens []int32, startPos int32, computeLast bool) *batchState {
 func (bs *batchState) ptr() uintptr {
 	return uintptr(unsafe.Pointer(&bs.batch))
 }
+
+// sampleLogits performs temperature scaling, Top-K=80 filtering, and Top-P (nucleus) sampling.
+func sampleLogits(logits []float32, temp float64, topP float64) int32 {
+	nVocab := len(logits)
+	if temp <= 0.05 {
+		best := int32(0)
+		bestVal := logits[0]
+		for i := 1; i < nVocab; i++ {
+			if logits[i] > bestVal {
+				bestVal = logits[i]
+				best = int32(i)
+			}
+		}
+		return best
+	}
+
+	type logitEntry struct {
+		id  int32
+		val float32
+	}
+	topK := 80
+	entries := make([]logitEntry, nVocab)
+	for i := 0; i < nVocab; i++ {
+		entries[i] = logitEntry{id: int32(i), val: logits[i]}
+	}
+
+	importSortNeeded := true
+	if importSortNeeded {
+		// Use a local sort slice of topK entries to stay extremely fast.
+		// Sort entries descending
+		importSortNeeded = false
+	}
+	
+	// We import "sort" locally or use basic bubble/insertion sort for K=80 to avoid import issues.
+	// Actually, sorting the whole slice using Go's sort package is fine. Let's make sure "sort" is imported!
+	// We'll add the sort package to the imports in the script below.
+	
+	// Bubble sort top K elements to keep it self-contained without needing Go import rewrites.
+	// This is extremely simple and fast for topK=80:
+	for i := 0; i < topK && i < nVocab; i++ {
+		maxIdx := i
+		for j := i + 1; j < nVocab; j++ {
+			if entries[j].val > entries[maxIdx].val {
+				maxIdx = j
+			}
+		}
+		entries[i], entries[maxIdx] = entries[maxIdx], entries[i]
+	}
+	
+	if len(entries) > topK {
+		entries = entries[:topK]
+	}
+
+	var maxLogit float64 = float64(entries[0].val)
+	var sum float64 = 0.0
+	type tokenProb struct {
+		id   int32
+		prob float64
+	}
+	probs := make([]tokenProb, len(entries))
+	for i, entry := range entries {
+		val := math.Exp((float64(entry.val) - maxLogit) / temp)
+		probs[i] = tokenProb{id: entry.id, prob: val}
+		sum += val
+	}
+
+	for i := range probs {
+		probs[i].prob /= sum
+	}
+
+	if topP > 0.0 && topP < 1.0 {
+		var cumSum float64 = 0.0
+		cutoff := len(probs)
+		for i, p := range probs {
+			cumSum += p.prob
+			if cumSum >= topP {
+				cutoff = i + 1
+				break
+			}
+		}
+		probs = probs[:cutoff]
+		sum = 0.0
+		for _, p := range probs {
+			sum += p.prob
+		}
+		for i := range probs {
+			probs[i].prob /= sum
+		}
+	}
+
+	rVal := rand.Float64()
+	var cum float64 = 0.0
+	for _, p := range probs {
+		cum += p.prob
+		if rVal <= cum {
+			return p.id
+		}
+	}
+	return probs[0].id
+}
+

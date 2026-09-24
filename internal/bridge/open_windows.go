@@ -42,3 +42,4 @@ func closeLib(handle uintptr) error {
 	dll := &syscall.DLL{Handle: syscall.Handle(handle)}
 	return dll.Release()
 }
+

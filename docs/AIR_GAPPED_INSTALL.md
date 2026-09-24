@@ -20,7 +20,7 @@ This guide covers deploying Janus in a fully offline, air-gapped environment wit
 
 ```powershell
 # Clone the repository
-git clone https://github.com/your-org/janus.git
+git clone https://github.com/Vibra-Ingenn/Janus.git
 cd janus
 
 # Build the main binary and keygen tool
@@ -120,8 +120,8 @@ JANUS_GPU_LAYERS=-1
 # Maximum tokens per inference call
 JANUS_MAX_TOKENS=512
 
-# HIPAA strict mode — blocks ALL cloud routes
-JANUS_HIPAA_STRICT=true
+# Local-only mode — prefer local inference (set false to allow cloud backends)
+JANUS_LOCAL_ONLY=true
 
 # Disable browser auto-open if running headless
 JANUS_NO_BROWSER=true
@@ -136,14 +136,14 @@ cd C:\Janus
 .\dist\janus.exe
 ```
 
-Access the UI at: http://localhost:8080
+Access the UI at: http://127.0.0.1:8990
 
 For a production service, install as a Windows Service using NSSM:
 
 ```powershell
 nssm install Janus "C:\Janus\dist\janus.exe"
 nssm set Janus AppDirectory "C:\Janus"
-nssm set Janus AppEnvironmentExtra "JANUS_HIPAA_STRICT=true"
+nssm set Janus AppEnvironmentExtra "JANUS_LOCAL_ONLY=true"
 nssm start Janus
 ```
 
@@ -152,9 +152,9 @@ nssm start Janus
 ## Step 7 — Verify air-gapped operation
 
 1. Confirm the log shows `janus: local engine ready [vulkan]`
-2. Navigate to http://localhost:8080 → Advanced → Config
-3. Verify **Compliance Mode** is ACTIVE and the **🔒 HIPAA Mode** pill is visible
-4. Check `logs/audit.jsonl` is growing on each inference call
+2. Navigate to http://127.0.0.1:8990 → Advanced → Config
+3. Confirm the active model path and backend show `vulkan` or `cpu`
+4. Check `logs/audit.jsonl` is growing on each inference call (if audit is enabled)
 5. Verify no outbound network connections using: `netstat -an | findstr ESTABLISHED`
 
 ---
@@ -167,7 +167,7 @@ nssm start Janus
 | `HMAC signature invalid` | Wrong signing secret | Rebuild with correct `-ldflags` secret |
 | UI shows `Community` tier | `license.key` not found | Place `license.key` in same dir as `janus.exe` |
 | Vulkan falls back to CPU | GPU driver too old | Update to NVIDIA driver 560+ |
-| Port 8080 in use | Another service | Set `PORT=8081` in `.env` |
+| Port 8990 in use | Another service | Set `JANUS_LISTEN_ADDR=127.0.0.1:8991` in `.env` |
 
 ---
 

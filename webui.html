@@ -125,8 +125,7 @@
         <div class="nav-spacer"></div>
         <div class="nav-adv" onclick="toggleAdvanced()">⚙ Advanced <span id="adv-arrow">▸</span></div>
         <div id="adv-tabs" style="display:none">
-            <div class="nav-tab" id="nav-agent" onclick="switchTab('agent')">🤖 Pipeline</div>
-            <div class="nav-tab" id="nav-swarm" onclick="switchTab('swarm')">⚡ Swarm</div>
+            <div class="nav-tab" id="nav-agent" onclick="switchTab('agent')">🤖 Kernel</div>
             <div class="nav-tab" id="nav-config" onclick="switchTab('config')">⚙️ Config</div>
             <div class="nav-tab" id="nav-memory" onclick="switchTab('memory')">🧠 Memory</div>
             <div class="nav-tab" id="nav-skills" onclick="switchTab('skills')">🧰 Skills</div>
@@ -142,16 +141,16 @@
     <div class="container">
         <!-- Assistant Panel -->
         <div class="panel active" id="assist-panel">
-            <div class="assist-hero"><h2>What can I help you with today?</h2><p>Describe your task in plain language — all AI processing runs locally on this computer. <strong>Not a substitute for clinical judgment.</strong></p></div>
+            <div class="assist-hero"><h2>What can I help you with today?</h2><p>Describe your task in plain language — all AI processing runs locally on this computer.</p></div>
             <div class="card">
                 <textarea class="assist-textarea" id="assist-input" placeholder="Example: Extract text from this PDF, create a Word document, or process uploaded files…"></textarea>
                 <div class="quick-actions">
                     <div class="section-label">Quick starts</div>
-                    <span class="quick-chip" onclick="fillQuick('Write a patient referral letter to')">📨 Referral Letter</span>
-                    <span class="quick-chip" onclick="fillQuick('Create a SOAP visit note for a patient with')">📋 SOAP Note</span>
-                    <span class="quick-chip" onclick="fillQuick('Summarize patient history and current medications for')">📄 Patient Summary</span>
-                    <span class="quick-chip" onclick="fillQuick('Draft a prior authorization letter for')">✉ Prior Auth</span>
-                    <span class="quick-chip" onclick="fillQuick('Write a care plan for a patient with')">🗂 Care Plan</span>
+                    <span class="quick-chip" onclick="fillQuick('Summarize this PDF and list the key points:')">📄 Summarize PDF</span>
+                    <span class="quick-chip" onclick="fillQuick('Extract all text from this document:')">📋 Extract Text</span>
+                    <span class="quick-chip" onclick="fillQuick('Write a professional email about')">✉ Draft Email</span>
+                    <span class="quick-chip" onclick="fillQuick('Explain this code and suggest improvements:')">💻 Review Code</span>
+                    <span class="quick-chip" onclick="fillQuick('Create a step-by-step plan for')">🗂 Task Plan</span>
                 </div>
 
                 <!-- Document upload -->
@@ -159,9 +158,9 @@
                     <div class="upload-zone-inner">
                         <label for="assist-file-input" class="upload-btn">📎 Attach document</label>
                         <input type="file" id="assist-file-input" style="display:none" multiple
-                               accept=".pdf,.docx,.doc,.rtf,.odt,.txt,.md,.csv,.tsv,.json,.xml,.yaml,.yml,.hl7,.html,.htm,.log,.xlsx,.xls,.png,.jpg,.jpeg,.tif,.tiff,.bmp,.gif"
+                               accept=".pdf,.docx,.doc,.rtf,.odt,.txt,.md,.csv,.tsv,.json,.xml,.yaml,.yml,.html,.htm,.log,.xlsx,.xls,.png,.jpg,.jpeg,.tif,.tiff,.bmp,.gif"
                                onchange="uploadFiles(this.files, 'assist')">
-                        <span class="upload-hint">or drag files here — PDF, Word, images (OCR), HL7, CSV, JSON, text, spreadsheets (max 50 MB)</span>
+                        <span class="upload-hint">or drag files here — PDF, Word, images (OCR), CSV, JSON, text, spreadsheets (max 50 MB)</span>
                         <div class="upload-progress" id="assist-upload-progress"><div class="upload-progress-fill"></div></div>
                     </div>
                     <div class="uploaded-files" id="assist-uploaded-files"></div>
@@ -202,12 +201,12 @@
                 </div>
                 <div class="chat-container" style="flex:1">
                     <div class="chat-messages" id="chat-messages">
-                        <div class="message system">Welcome to Janus Clinical AI. I run entirely on this device — no data is sent externally. How can I assist you today?</div>
+                        <div class="message system">Welcome to Janus. Local model runner and agent — your data stays on this device. How can I help?</div>
                     </div>
                     <div class="chat-input">
                         <label for="chat-file-input" class="upload-btn" title="Attach document" style="display:flex;align-items:center;padding:0 12px">📎</label>
                         <input type="file" id="chat-file-input" style="display:none" multiple
-                               accept=".pdf,.docx,.doc,.rtf,.odt,.txt,.md,.csv,.tsv,.json,.xml,.yaml,.yml,.hl7,.html,.htm,.log,.xlsx,.xls,.png,.jpg,.jpeg,.tif,.tiff,.bmp,.gif"
+                               accept=".pdf,.docx,.doc,.rtf,.odt,.txt,.md,.csv,.tsv,.json,.xml,.yaml,.yml,.html,.htm,.log,.xlsx,.xls,.png,.jpg,.jpeg,.tif,.tiff,.bmp,.gif"
                                onchange="uploadFiles(this.files, 'chat')">
                         <textarea id="chat-input" placeholder="Type your message… (Enter to send, Shift+Enter for newline)" onkeydown="handleChatKey(event)"></textarea>
                         <button class="btn" id="send-btn" onclick="sendMessage()">Send</button>
@@ -269,19 +268,6 @@
         </div>
         <!-- Config Panel -->
         <div class="panel" id="config-panel">
-            <!-- Compliance Mode Card -->
-            <div class="agent-panel" id="compliance-card" style="border:2px solid #fbbf24;background:#fffbeb">
-                <h3 style="color:#92400e;margin-bottom:10px">🛡️ Compliance Mode (HIPAA)</h3>
-                <p style="color:#78350f;font-size:0.85rem;margin-bottom:14px">When enabled, all cloud API routes are blocked and every action is written to <code>logs/audit.jsonl</code>. Required for clinical/healthcare deployments.</p>
-                <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap">
-                    <label style="display:flex;align-items:center;gap:10px;cursor:pointer;font-weight:600;color:#92400e">
-                        <input type="checkbox" id="compliance-toggle" style="width:20px;height:20px;cursor:pointer" onchange="setCompliance(this.checked)">
-                        <span id="compliance-label">Loading…</span>
-                    </label>
-                    <span id="compliance-locked" style="display:none;font-size:0.8rem;background:#fde68a;padding:3px 10px;border-radius:12px;color:#78350f">🔒 Locked by JANUS_HIPAA_STRICT env var</span>
-                </div>
-                <div id="compliance-status" style="margin-top:8px;font-size:0.82rem;color:#92400e"></div>
-            </div>
             <!-- VRAM Budget Card -->
             <div class="agent-panel" id="vram-card" style="border:1px solid #bfdbfe;background:#eff6ff">
                 <h3 style="color:#1e40af;margin-bottom:10px">📊 Engine / VRAM Budget</h3>
@@ -307,7 +293,6 @@
                     <div style="text-align:center"><div style="font-size:0.7rem;color:#64748b">Uptime</div><div id="tele-uptime" style="font-size:1.1rem;font-weight:700;color:#7c3aed">—</div></div>
                     <div style="text-align:center"><div style="font-size:0.7rem;color:#64748b">Tasks</div><div id="tele-tasks" style="font-size:1.1rem;font-weight:700;color:#1e40af">—</div></div>
                     <div style="text-align:center"><div style="font-size:0.7rem;color:#64748b">Chat Reqs</div><div id="tele-chat" style="font-size:1.1rem;font-weight:700;color:#0891b2">—</div></div>
-                    <div style="text-align:center"><div style="font-size:0.7rem;color:#64748b">Swarm Runs</div><div id="tele-swarm" style="font-size:1.1rem;font-weight:700;color:#ea580c">—</div></div>
                     <div style="text-align:center"><div style="font-size:0.7rem;color:#64748b">Completed</div><div id="tele-completed" style="font-size:1.1rem;font-weight:700;color:#16a34a">—</div></div>
                     <div style="text-align:center"><div style="font-size:0.7rem;color:#64748b">Failed</div><div id="tele-failed" style="font-size:1.1rem;font-weight:700;color:#dc2626">—</div></div>
                     <div style="text-align:center"><div style="font-size:0.7rem;color:#64748b">Tool Calls</div><div id="tele-tools" style="font-size:1.1rem;font-weight:700;color:#475569">—</div></div>
@@ -319,108 +304,39 @@
             </div>
 
             <div class="agent-panel">
-                <h3>⚙️ Role Model Config <span style="font-size:0.75rem;color:#888;font-weight:normal">— changes apply immediately, no restart needed</span></h3>
-                <p style="color:#888;font-size:0.85rem;margin-bottom:18px">Each role can use a different .gguf model. All roles fall back to JANUS_MODEL_PATH if left blank.</p>
+                <h3>⚙️ Model Settings <span style="font-size:0.75rem;color:#888;font-weight:normal">— hot-swappable without restart</span></h3>
+                <p style="color:#888;font-size:0.85rem;margin-bottom:18px">Pick a <code>.gguf</code> model from your <code>models/</code> folder. To change backend (<code>vulkan</code>, <code>cpu</code>, <code>ollama</code>), edit <code>.env</code> and restart Janus.</p>
 
                 <div style="display:grid;gap:14px">
                     <div class="form-group" style="border:1px solid #bfdbfe;border-radius:8px;padding:12px;background:#eff6ff">
-                        <label>💬 Default Chat Model <span style="color:#1e40af;font-size:0.8rem">(💡 Chat tab uses this — hot-swappable!)</span></label>
+                        <label>💬 Active Model</label>
                         <select id="cfg-default" onchange="syncPath('default', this.value)"></select>
                         <input type="text" id="cfg-default-path" placeholder="./models/your-model.gguf" style="margin-top:6px;width:100%;background:#f8fafc;border:1px solid #cbd5e1;border-radius:6px;padding:8px 12px;color:#0f172a;font-size:0.9rem">
                     </div>
                     <div class="form-group">
-                        <label>🏗 Master Architect <span style="color:#888;font-size:0.8rem">(English → spec, never builds)</span></label>
-                        <select id="cfg-architect"></select>
-                    </div>
-                    <div class="form-group">
-                        <label>🔨 Worker <span style="color:#888;font-size:0.8rem">(spec → builds)</span></label>
-                        <select id="cfg-worker"></select>
-                    </div>
-                    <div class="form-group">
-                        <label>⚖️ Judge <span style="color:#888;font-size:0.8rem">(fast audit, binary pass/fail)</span></label>
-                        <select id="cfg-judge"></select>
-                    </div>
-                    <div class="form-group">
-                        <label>✂️ Pruner <span style="color:#888;font-size:0.8rem">(strips context, defaults to Judge)</span></label>
-                        <select id="cfg-pruner"></select>
-                    </div>
-                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
-                        <div class="form-group">
-                            <label>Backend</label>
-                            <select id="cfg-backend" style="background:#f8fafc;border:1px solid #cbd5e1;border-radius:6px;padding:8px 12px;color:#0f172a;width:100%">
-                                <option value="vulkan">vulkan (GPU)</option>
-                                <option value="cpu">cpu</option>
-                            </select>
-                        </div>
-                        <div class="form-group">
-                            <label>Judge confidence threshold <span style="color:#888;font-size:0.8rem">(0.0–1.0)</span></label>
-                            <input type="number" id="cfg-confidence" min="0" max="1" step="0.05" value="0.85" style="background:#f8fafc;border:1px solid #cbd5e1;border-radius:6px;padding:8px 12px;color:#0f172a;width:100%">
-                        </div>
-                        <div class="form-group">
-                            <label>Max Worker retries</label>
-                            <input type="number" id="cfg-retries" min="1" max="5" value="2" style="background:#f8fafc;border:1px solid #cbd5e1;border-radius:6px;padding:8px 12px;color:#0f172a;width:100%">
-                        </div>
+                        <label>Backend <span style="color:#888;font-size:0.8rem">(read-only — set in .env)</span></label>
+                        <input type="text" id="cfg-backend-display" readonly style="background:#f1f5f9;color:#64748b;cursor:not-allowed">
                     </div>
                 </div>
 
                 <div style="margin-top:18px;display:flex;gap:10px;align-items:center">
-                    <button class="btn" onclick="saveConfig()">Save Config</button>
+                    <button class="btn" onclick="saveConfig()">Save &amp; Load Model</button>
                     <button class="btn" style="background:rgba(255,255,255,0.07)" onclick="loadConfig()">Reload from Server</button>
                     <span id="cfg-status" style="font-size:0.85rem;color:#888"></span>
                 </div>
 
-                <!-- System Prompts -->
-                <div style="margin-top:32px;border-top:1px solid rgba(255,255,255,0.08);padding-top:24px">
-                    <h3 style="margin:0 0 6px 0">🧠 System Prompts <span style="font-size:0.75rem;color:#888;font-weight:normal">— role banners injected before every conversation</span></h3>
-                    <p style="color:#888;font-size:0.85rem;margin-bottom:18px">Each role gets this system prompt prepended when no system message is present. Edit to tune behavior, persona, and constraints.</p>
-
-                    <div style="display:grid;gap:18px">
-                        <div class="form-group">
-                            <label>💬 Default Chat <span style="color:#00d4ff;font-size:0.8rem">— used for all chat tab messages</span></label>
-                            <textarea id="prompt-default" rows="4" placeholder="You are Janus, a helpful AI assistant…" style="width:100%;background:rgba(0,0,0,0.35);border:1px solid rgba(0,212,255,0.25);border-radius:6px;padding:10px 12px;color:#e0e0e0;font-size:0.875rem;resize:vertical;font-family:inherit"></textarea>
-                        </div>
-                        <div class="form-group">
-                            <label>🏗 Planner / Architect</label>
-                            <textarea id="prompt-planner" rows="4" placeholder="You are the Master Architect…" style="width:100%;background:rgba(0,0,0,0.35);border:1px solid rgba(255,255,255,0.1);border-radius:6px;padding:10px 12px;color:#e0e0e0;font-size:0.875rem;resize:vertical;font-family:inherit"></textarea>
-                        </div>
-                        <div class="form-group">
-                            <label>🔨 Worker</label>
-                            <textarea id="prompt-worker" rows="4" placeholder="You are a skilled software engineer…" style="width:100%;background:rgba(0,0,0,0.35);border:1px solid rgba(255,255,255,0.1);border-radius:6px;padding:10px 12px;color:#e0e0e0;font-size:0.875rem;resize:vertical;font-family:inherit"></textarea>
-                        </div>
-                        <div class="form-group">
-                            <label>⚖️ Judge</label>
-                            <textarea id="prompt-judge" rows="3" placeholder="You are a senior code reviewer…" style="width:100%;background:rgba(0,0,0,0.35);border:1px solid rgba(255,255,255,0.1);border-radius:6px;padding:10px 12px;color:#e0e0e0;font-size:0.875rem;resize:vertical;font-family:inherit"></textarea>
-                        </div>
-                        <div class="form-group">
-                            <label>✂️ Pruner</label>
-                            <textarea id="prompt-pruner" rows="3" placeholder="You are a context optimizer…" style="width:100%;background:rgba(0,0,0,0.35);border:1px solid rgba(255,255,255,0.1);border-radius:6px;padding:10px 12px;color:#e0e0e0;font-size:0.875rem;resize:vertical;font-family:inherit"></textarea>
-                        </div>
+                <div style="margin-top:32px;border-top:1px solid #e2e8f0;padding-top:24px">
+                    <h3 style="margin:0 0 6px 0">🧠 Chat System Prompt</h3>
+                    <p style="color:#888;font-size:0.85rem;margin-bottom:18px">Prepended to Chat conversations when no system message is present.</p>
+                    <div class="form-group">
+                        <textarea id="prompt-default" rows="5" placeholder="You are Janus, a helpful local AI assistant…" style="width:100%;background:#f8fafc;border:1px solid #cbd5e1;border-radius:6px;padding:10px 12px;color:#0f172a;font-size:0.875rem;resize:vertical;font-family:inherit"></textarea>
                     </div>
                     <div style="margin-top:14px;display:flex;gap:10px;align-items:center">
-                        <button class="btn" onclick="savePrompts()">Save Prompts</button>
-                        <button class="btn" style="background:rgba(255,255,255,0.07)" onclick="resetPrompts()">Reset to Defaults</button>
+                        <button class="btn" onclick="savePrompts()">Save Prompt</button>
+                        <button class="btn" style="background:rgba(255,255,255,0.07)" onclick="resetPrompts()">Clear</button>
                         <span id="prompt-status" style="font-size:0.85rem;color:#888"></span>
                     </div>
                 </div>
-            </div>
-        </div>
-
-        <!-- Swarm Panel -->
-        <div class="panel" id="swarm-panel">
-            <div class="agent-panel" style="margin-bottom:20px">
-                <h3>⚡ Swarm Pipeline — Architect → Worker → Judge → Pruner</h3>
-                <p style="color:#888;font-size:0.85rem;margin-bottom:15px">Describe anything in plain English. The AI team plans, builds, peer-reviews, and prunes automatically.</p>
-                <div class="form-group">
-                    <label>Task (plain English)</label>
-                    <textarea id="swarm-input" placeholder="e.g. Write a Python script that renames all .jpg files in a folder to include the date taken from EXIF data" style="min-height:80px"></textarea>
-                </div>
-                <button class="btn" id="swarm-run-btn" onclick="runSwarm()">Run Swarm</button>
-            </div>
-            <div class="agent-panel">
-                <h3 id="swarm-status-title">Status</h3>
-                <div id="swarm-pipeline-vis" style="display:flex;gap:10px;margin-bottom:20px;flex-wrap:wrap"></div>
-                <div id="swarm-events" style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:10px 14px;margin-bottom:12px;max-height:200px;overflow-y:auto;font-size:0.8rem;color:#475569;display:none"></div>
-                <div id="swarm-result" style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:15px;min-height:60px;white-space:pre-wrap;font-size:0.9rem;color:#1e293b"></div>
             </div>
         </div>
         <!-- Skills Panel -->
@@ -471,7 +387,7 @@
     <!-- Startup overlay — removed by JS once server responds -->
     <div id="startup-overlay" style="position:fixed;inset:0;z-index:9999;background:#f1f5f9;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:18px">
         <div style="font-size:2.2rem">🜁</div>
-        <div style="font-size:1.3rem;font-weight:700;color:#1e293b">Janus Clinical AI</div>
+        <div style="font-size:1.3rem;font-weight:700;color:#1e293b">Janus</div>
         <div style="width:220px;height:6px;background:#e2e8f0;border-radius:99px;overflow:hidden">
             <div style="height:100%;background:#1e40af;border-radius:99px;animation:startup-bar 2.5s ease-in-out infinite"></div>
         </div>
@@ -481,7 +397,7 @@
     </div>
 
     <script>
-        const API_BASE = 'http://localhost:8080';
+        const API_BASE = '';
         let chatHistory = [];
         let currentPlan = null;
         let currentSessionID = null;
@@ -551,18 +467,12 @@
 
         async function loadLicenseStatus() {
             try {
-                const [licR, compR] = await Promise.all([
-                    fetch('/license/status'),
-                    fetch('/compliance/mode')
-                ]);
-                const lic  = await licR.json();
-                const comp = await compR.json();
+                const licR = await fetch('/license/status');
+                const lic = await licR.json();
                 const pill = document.getElementById('license-pill');
-                const hipaa = document.getElementById('hipaa-pill');
                 const tierLabels = {community:'🔑 Community', professional:'💼 Professional', enterprise:'🏆 Enterprise'};
                 pill.textContent = tierLabels[lic.tier] || ('🔑 ' + lic.tier);
                 pill.className = 'pill ' + (lic.tier || 'community');
-                hipaa.style.display = comp.enabled ? 'inline-block' : 'none';
             } catch(e) {}
         }
 
@@ -574,14 +484,10 @@
                 const d = await r.json();
                 currentUserRole = d.role || 'readonly';
                 if (currentUserRole !== 'admin') {
-                    // Hide admin-only elements
                     const hide = el => { if (el) el.style.display = 'none'; };
                     hide(document.getElementById('nav-config'));
-                    hide(document.getElementById('compliance-card'));
                     hide(document.getElementById('vram-card'));
-                    // Disable swarm tab for non-enterprise
                     if (currentUserRole === 'readonly') {
-                        hide(document.getElementById('nav-swarm'));
                         hide(document.getElementById('nav-agent'));
                     }
                 }
@@ -683,7 +589,7 @@
             if (navEl) navEl.classList.add('active');
             const panelEl = document.getElementById(tab + '-panel');
             if (panelEl) panelEl.classList.add('active');
-            if (tab === 'config') { if (availableModels.length === 0) { loadConfig(); } loadComplianceMode(); loadEngineStatus(); loadTelemetry(); }
+            if (tab === 'config') { if (availableModels.length === 0) { loadConfig(); } loadEngineStatus(); loadTelemetry(); }
             if (tab === 'memory') loadMemory();
             if (tab === 'skills') loadSkills();
         }
@@ -1029,10 +935,7 @@
         }
 
         const AGENT_META = {
-            worker:   { label: 'Builder',  icon: '🔨', color: '#1e40af' },
-            reviewer: { label: 'Reviewer', icon: '🔍', color: '#7c3aed' },
-            pruner:   { label: 'Pruner',   icon: '✂️',  color: '#0f766e' },
-            planner:  { label: 'Planner',  icon: '📋', color: '#b45309' },
+            kernel: { label: 'Kernel', icon: '🧠', color: '#1e40af' },
         };
         const STATUS_ICON = { thinking:'💭', tool_call:'⚙️', tool_result:'✅', tool_error:'⚠️', done:'✔', failed:'✗', reviewing:'🔄' };
 
@@ -1260,175 +1163,6 @@
             document.getElementById('results-section').style.display = 'none';
         }
 
-        async function executePlan() {
-            const taskId = document.getElementById('execute-task-id').value.trim();
-            const planJson = document.getElementById('plan-json').value.trim();
-
-            if (!taskId || !planJson) {
-                alert('Please enter task ID and plan');
-                return;
-            }
-
-            let plan;
-            try {
-                plan = JSON.parse(planJson);
-            } catch (e) {
-                alert('Invalid plan JSON');
-                return;
-            }
-
-            const btn = document.getElementById('execute-btn');
-            btn.disabled = true;
-
-            const numSteps = (plan.steps || []).filter(s => s.owner_agent && s.owner_agent !== 'master_planner').length;
-            const startTime = Date.now();
-            const timer = setInterval(() => {
-                const elapsed = ((Date.now() - startTime) / 1000).toFixed(0);
-                btn.textContent = `⏳ Running ${numSteps} steps… ${elapsed}s`;
-            }, 500);
-
-            // Show progress inside execute section
-            document.getElementById('plan-preview').innerHTML += `
-                <div style="margin-top:12px;padding:12px;text-align:center;background:rgba(0,0,0,0.2);border-radius:8px">
-                    <div class="typing-indicator" style="display:inline-flex;gap:6px;margin-bottom:8px"><span></span><span></span><span></span></div>
-                    <div style="font-size:0.85rem;color:#aaa">Running local inference for each step — typically 10-30s total…</div>
-                </div>`;
-
-            try {
-                const controller = new AbortController();
-                const timeoutId = setTimeout(() => controller.abort(), 300000);
-
-                const response = await fetch(`${API_BASE}/task/execute`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ task_id: taskId, plan: plan }),
-                    signal: controller.signal
-                });
-                clearTimeout(timeoutId);
-
-                const handoff = await response.json();
-                const totalTime = ((Date.now() - startTime) / 1000).toFixed(1);
-
-                const output = document.getElementById('handoff-output');
-                if (handoff.error) {
-                    output.innerHTML = `<div class="error">Error: ${handoff.error}</div>`;
-                    document.getElementById('results-section').style.display = 'block';
-                } else {
-                    const steps = handoff.data?.handoffs || [];
-
-                    // Extract the actual deliverable from the pipeline steps
-                    // Priority: pruner FINAL_ANSWER > reviewer FINAL_DELIVERABLE > worker DELIVERABLE
-                    function extractSection(text, ...labels) {
-                        for (const label of labels) {
-                            const re = new RegExp(label + ':\\s*\\n?([\\s\\S]+?)(?=\\n[A-Z_]+:|$)', 'i');
-                            const m = text.match(re);
-                            if (m && m[1].trim()) return m[1].trim();
-                        }
-                        return null;
-                    }
-
-                    let finalAnswer = null;
-                    // Walk steps from last to first to find best deliverable
-                    for (let i = steps.length - 1; i >= 0; i--) {
-                        const raw = steps[i].data?.raw_content || '';
-                        const found = extractSection(raw, 'FINAL_ANSWER', 'FINAL_DELIVERABLE', 'DELIVERABLE');
-                        if (found) { finalAnswer = found; break; }
-                    }
-                    // Fallback: use last step raw_content
-                    if (!finalAnswer && steps.length > 0) {
-                        finalAnswer = steps[steps.length - 1].data?.raw_content || '';
-                    }
-
-                    let html = '';
-
-                    // ── Main deliverable block (what the user actually wants) ──
-                    if (finalAnswer) {
-                        html += `<div style="margin-bottom:16px;padding:16px;background:rgba(0,212,255,0.07);border:1px solid rgba(0,212,255,0.35);border-radius:10px">
-                            <div style="color:#00d4ff;font-size:0.8rem;font-weight:700;letter-spacing:0.05em;margin-bottom:10px;text-transform:uppercase">✅ Delivered Result</div>
-                            <div style="font-size:1rem;line-height:1.6;white-space:pre-wrap;color:#f0f0f0">${finalAnswer}</div>
-                        </div>`;
-                    }
-
-                    html += `<div style="color:#888;font-size:0.75rem;margin-bottom:8px">Completed in ${totalTime}s — ${steps.length} agent steps</div>`;
-
-                    // ── Collapsible pipeline details ──
-                    let detailsHtml = '';
-                    steps.forEach((s, i) => {
-                        const raw = s.data?.raw_content || '';
-                        const roleColor = s.from_agent === 'worker' ? '#00d4ff' : s.from_agent === 'reviewer' ? '#ffc107' : '#00ff88';
-                        detailsHtml += `<div style="margin-bottom:8px;padding:10px;background:rgba(0,0,0,0.25);border-radius:8px;border-left:3px solid ${roleColor}">
-                            <div style="font-size:0.8rem;color:${roleColor};margin-bottom:4px;font-weight:600">${s.from_agent.toUpperCase()} — ${s.step_title || s.step_title}</div>
-                            <div style="font-size:0.78rem;color:#aaa;white-space:pre-wrap">${raw.length > 500 ? raw.substring(0,500)+'…' : raw}</div>
-                        </div>`;
-                    });
-                    html += `<details><summary style="cursor:pointer;color:#555;font-size:0.8rem;user-select:none">▶ Pipeline details (${steps.length} steps)</summary>
-                        <div style="margin-top:8px">${detailsHtml}</div>
-                    </details>`;
-                    html += `<details style="margin-top:6px"><summary style="cursor:pointer;color:#444;font-size:0.75rem;user-select:none">Raw JSON</summary><pre style="font-size:0.72rem;margin-top:6px"><code>${JSON.stringify(handoff.data, null, 2)}</code></pre></details>`;
-
-                    output.innerHTML = html;
-
-                    // Show step 3 and scroll to it
-                    const resultsSection = document.getElementById('results-section');
-                    resultsSection.style.display = 'block';
-                    resultsSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                }
-            } catch (e) {
-                const output = document.getElementById('handoff-output');
-                if (e.name === 'AbortError') {
-                    output.innerHTML = `<div class="error">Timed out after 5 minutes. Check server logs.</div>`;
-                } else {
-                    output.innerHTML = `<div class="error">Error: ${e.message}</div>`;
-                }
-                document.getElementById('results-section').style.display = 'block';
-            } finally {
-                clearInterval(timer);
-                btn.disabled = false;
-                btn.textContent = '▶ Run Agent Pipeline';
-            }
-        }
-        // ── Compliance Mode ────────────────────────────────────────────────
-        async function loadComplianceMode() {
-            try {
-                const r = await fetch('/compliance/mode');
-                const d = await r.json();
-                const toggle = document.getElementById('compliance-toggle');
-                const label  = document.getElementById('compliance-label');
-                const locked = document.getElementById('compliance-locked');
-                const status = document.getElementById('compliance-status');
-                toggle.checked  = d.enabled;
-                toggle.disabled = d.locked;
-                label.textContent = d.enabled ? '✅ Compliance Mode ACTIVE' : '⬜ Compliance Mode OFF';
-                locked.style.display = d.locked ? 'inline-block' : 'none';
-                status.textContent = d.enabled
-                    ? 'All cloud routes blocked. Audit log active at logs/audit.jsonl.'
-                    : 'Cloud routes permitted. Audit log still active.';
-            } catch(e) {
-                document.getElementById('compliance-status').textContent = 'Could not reach server.';
-            }
-        }
-
-        async function setCompliance(enabled) {
-            const status = document.getElementById('compliance-status');
-            status.textContent = 'Saving…';
-            try {
-                const r = await fetch('/compliance/mode', {
-                    method: 'POST',
-                    headers: {'Content-Type':'application/json'},
-                    body: JSON.stringify({enabled})
-                });
-                if (!r.ok) {
-                    const e = await r.json();
-                    status.textContent = '⚠ ' + (e.error || 'Error');
-                    await loadComplianceMode();
-                    return;
-                }
-                await loadComplianceMode();
-            } catch(e) {
-                status.textContent = '⚠ Request failed.';
-            }
-        }
-
         // ── Engine / VRAM Status ──────────────────────────────────────────────
         async function loadEngineStatus() {
             try {
@@ -1438,6 +1172,8 @@
                 document.getElementById('vram-free').textContent = d.vram_free_mb + ' MB';
                 document.getElementById('vram-ceil').textContent = d.vram_ceil_mb + ' MB';
                 document.getElementById('vram-backend').textContent = d.backend || 'none';
+                const backendDisplay = document.getElementById('cfg-backend-display');
+                if (backendDisplay) backendDisplay.value = d.backend || '—';
                 const mpath = d.model_path || 'none';
                 document.getElementById('vram-model').textContent = mpath.split(/[/\\]/).pop();
                 const pct = d.vram_ceil_mb > 0 ? Math.round(d.vram_used_mb / d.vram_ceil_mb * 100) : 0;
@@ -1459,7 +1195,6 @@
                 document.getElementById('tele-uptime').textContent = h > 0 ? `${h}h ${m}m` : `${m}m`;
                 document.getElementById('tele-tasks').textContent = d.tasks_submitted;
                 document.getElementById('tele-chat').textContent = d.chat_requests;
-                document.getElementById('tele-swarm').textContent = d.swarm_runs;
                 document.getElementById('tele-completed').textContent = d.tasks_completed;
                 document.getElementById('tele-failed').textContent = d.tasks_failed;
                 document.getElementById('tele-tools').textContent = d.tool_calls;
@@ -1474,36 +1209,21 @@
 
         async function loadConfig() {
             document.getElementById('cfg-status').textContent = 'Loading…';
-            console.log('loadConfig started');
             try {
-                const [cfgRes, modRes, defRes] = await Promise.all([
-                    fetch(`${API_BASE}/swarm/config`),
+                const [modRes, defRes, engRes] = await Promise.all([
                     fetch(`${API_BASE}/models/list`),
-                    fetch(`${API_BASE}/models/default`)
+                    fetch(`${API_BASE}/models/default`),
+                    fetch(`${API_BASE}/engine/status`)
                 ]);
-                console.log('fetch responses:', cfgRes.ok, modRes.ok, defRes.ok);
-                const cfg = await cfgRes.json();
                 const modData = await modRes.json();
                 const defData = await defRes.json();
-                console.log('parsed data:', {cfg, modData, defData});
+                const engData = engRes.ok ? await engRes.json() : {};
                 availableModels = modData.models || [];
-                console.log('availableModels:', availableModels);
-
-                const roles = ['default','architect','worker','judge','pruner'];
-                roles.forEach(r => populateSelect(r, availableModels));
-
-                // Set fields AFTER populating dropdowns so dropdown values can be matched
+                populateSelect('default', availableModels);
                 setField('cfg-default-path', defData.model_path || '');
-                if (cfg.ArchitectModelPath) document.getElementById('cfg-architect').value = cfg.ArchitectModelPath;
-                if (cfg.WorkerModelPath)    document.getElementById('cfg-worker').value    = cfg.WorkerModelPath;
-                if (cfg.JudgeModelPath)     document.getElementById('cfg-judge').value     = cfg.JudgeModelPath;
-                if (cfg.PrunerModelPath)    document.getElementById('cfg-pruner').value    = cfg.PrunerModelPath;
-                if (cfg.Backend) document.getElementById('cfg-backend').value = cfg.Backend;
-                if (cfg.ConfidenceThreshold) document.getElementById('cfg-confidence').value = cfg.ConfidenceThreshold;
-                if (cfg.MaxRetries) document.getElementById('cfg-retries').value = cfg.MaxRetries;
-
+                const backendDisplay = document.getElementById('cfg-backend-display');
+                if (backendDisplay) backendDisplay.value = engData.backend || '—';
                 document.getElementById('cfg-status').textContent = `Loaded — ${availableModels.length} model(s) found`;
-                // Also load system prompts
                 await loadPrompts();
             } catch(e) {
                 document.getElementById('cfg-status').textContent = 'Error: ' + e.message;
@@ -1516,10 +1236,6 @@
                 if (!res.ok) return;
                 const p = await res.json();
                 document.getElementById('prompt-default').value = p.default_chat || '';
-                document.getElementById('prompt-planner').value = p.planner || '';
-                document.getElementById('prompt-worker').value  = p.worker  || '';
-                document.getElementById('prompt-judge').value   = p.judge   || '';
-                document.getElementById('prompt-pruner').value  = p.pruner  || '';
             } catch(e) {
                 console.warn('loadPrompts:', e.message);
             }
@@ -1528,14 +1244,9 @@
         async function savePrompts() {
             const status = document.getElementById('prompt-status');
             const body = {
-                default_chat: document.getElementById('prompt-default').value.trim(),
-                planner:      document.getElementById('prompt-planner').value.trim(),
-                worker:       document.getElementById('prompt-worker').value.trim(),
-                judge:        document.getElementById('prompt-judge').value.trim(),
-                pruner:       document.getElementById('prompt-pruner').value.trim(),
+                default_chat: document.getElementById('prompt-default').value.trim()
             };
-            // Remove blank — server will keep existing value for empty fields
-            Object.keys(body).forEach(k => { if (!body[k]) delete body[k]; });
+            if (!body.default_chat) delete body.default_chat;
             try {
                 status.textContent = 'Saving…';
                 const res = await fetch(`${API_BASE}/config/prompts`, {
@@ -1544,28 +1255,15 @@
                     body: JSON.stringify(body)
                 });
                 const d = await res.json();
-                status.textContent = res.ok ? '✅ Prompts saved — active immediately' : '❌ ' + (d.error || 'error');
+                status.textContent = res.ok ? '✅ Prompt saved — active immediately' : '❌ ' + (d.error || 'error');
             } catch(e) {
                 status.textContent = '❌ ' + e.message;
             }
         }
 
         async function resetPrompts() {
-            if (!confirm('Reset all role prompts to built-in defaults?')) return;
-            // POST empty strings — server merges; send sentinel to force reset
-            // Instead fetch defaults and populate textareas from the server defaults
-            try {
-                document.getElementById('prompt-default').value = '';
-                document.getElementById('prompt-planner').value = '';
-                document.getElementById('prompt-worker').value  = '';
-                document.getElementById('prompt-judge').value   = '';
-                document.getElementById('prompt-pruner').value  = '';
-                // Saving empty strings won't override (merge logic skips empties)
-                // So call with a special flag — just reload from server after a moment
-                document.getElementById('prompt-status').textContent = 'Cleared — reload from server to see defaults';
-            } catch(e) {
-                document.getElementById('prompt-status').textContent = '❌ ' + e.message;
-            }
+            document.getElementById('prompt-default').value = '';
+            document.getElementById('prompt-status').textContent = 'Cleared — reload from server to restore saved prompt';
         }
 
         function populateSelect(role, models) {
@@ -1601,51 +1299,31 @@
 
         async function saveConfig() {
             const defaultPath = document.getElementById('cfg-default-path').value.trim();
-            const body = {
-                architect_model_path:  document.getElementById('cfg-architect').value,
-                worker_model_path:     document.getElementById('cfg-worker').value,
-                judge_model_path:      document.getElementById('cfg-judge').value,
-                pruner_model_path:     document.getElementById('cfg-pruner').value,
-                backend:               document.getElementById('cfg-backend').value,
-                confidence_threshold:  parseFloat(document.getElementById('cfg-confidence').value),
-                max_retries:           parseInt(document.getElementById('cfg-retries').value)
-            };
-            Object.keys(body).forEach(k => {
-                const v = body[k];
-                if (v === '' || v === null || v === undefined) delete body[k];
-                else if (typeof v === 'number' && isNaN(v)) delete body[k];
-            });
-
             const status = document.getElementById('cfg-status');
+            if (!defaultPath) {
+                status.textContent = '❌ Enter a model path first';
+                return;
+            }
             try {
-                // Save swarm config
-                const swarmRes = await fetch(`${API_BASE}/swarm/config`, {
+                status.textContent = '⏳ Loading model… (may take 10–30s on first load)';
+                const loadRes = await fetch(`${API_BASE}/models/load`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(body)
+                    body: JSON.stringify({ model_path: defaultPath })
                 });
-                if (!swarmRes.ok) {
-                    const d = await swarmRes.json();
-                    status.textContent = '❌ ' + (d.error || 'swarm config error');
+                const loadData = await loadRes.json();
+                if (!loadRes.ok) {
+                    status.textContent = '❌ Model load failed: ' + (loadData.error || 'unknown error');
                     return;
                 }
-
-                // Hot-swap the resident model — this reloads the model in VRAM
-                if (defaultPath) {
-                    status.textContent = '⏳ Loading model into GPU… (may take 10-30s)';
-                    const loadRes = await fetch(`${API_BASE}/models/load`, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ model_path: defaultPath })
-                    });
-                    const loadData = await loadRes.json();
-                    if (!loadRes.ok) {
-                        status.textContent = '❌ Model load failed: ' + (loadData.error || 'unknown error');
-                        return;
-                    }
-                }
-
-                status.textContent = '✅ Saved — model active immediately';
+                await fetch(`${API_BASE}/models/default`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ model_path: defaultPath })
+                });
+                status.textContent = '✅ Model loaded and saved';
+                loadEngineStatus();
+                checkStatus();
             } catch(e) {
                 status.textContent = '❌ ' + e.message;
             }
@@ -1656,180 +1334,6 @@
             if (bytes >= 1e9) return (bytes/1e9).toFixed(1) + ' GB';
             if (bytes >= 1e6) return (bytes/1e6).toFixed(0) + ' MB';
             return bytes + ' B';
-        }
-
-        // ── Swarm ──────────────────────────────────────────────────────────
-        let swarmPollTimer = null;
-
-        async function runSwarm() {
-            const input = document.getElementById('swarm-input').value.trim();
-            if (!input) { alert('Describe a task first'); return; }
-
-            const btn = document.getElementById('swarm-run-btn');
-            btn.disabled = true;
-            btn.textContent = 'Submitting…';
-            setSwarmVis('submitting');
-            document.getElementById('swarm-result').textContent = '';
-
-            try {
-                const resp = await fetch(`${API_BASE}/swarm/run`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ input })
-                });
-                const data = await resp.json();
-                if (data.error) { showSwarmError(data.error); return; }
-                pollSwarm(data.task_id);
-            } catch(e) {
-                showSwarmError(e.message);
-                btn.disabled = false;
-                btn.textContent = 'Run Swarm';
-            }
-        }
-
-        let swarmEventSource = null;
-        const agentIcons = {architect:'🏗',worker:'🔨',judge:'⚖️',pruner:'✂️',pipeline:'✅'};
-
-        function pollSwarm(taskId) {
-            stopPoll();
-            const eventsEl = document.getElementById('swarm-events');
-            eventsEl.style.display = 'block';
-            eventsEl.innerHTML = '<div style="color:#94a3b8">Waiting for events…</div>';
-
-            // Try SSE first, fall back to polling
-            if (typeof EventSource !== 'undefined') {
-                pollSwarmSSE(taskId);
-            } else {
-                pollSwarmLegacy(taskId);
-            }
-        }
-
-        function pollSwarmSSE(taskId) {
-            const eventsEl = document.getElementById('swarm-events');
-            let first = true;
-            swarmEventSource = new EventSource(`${API_BASE}/swarm/events?task_id=${encodeURIComponent(taskId)}`);
-
-            swarmEventSource.addEventListener('progress', (e) => {
-                if (first) { eventsEl.innerHTML = ''; first = false; }
-                const ev = JSON.parse(e.data);
-                const icon = agentIcons[ev.agent] || '•';
-                const time = new Date(ev.at).toLocaleTimeString();
-                const statusColor = ev.status === 'done' ? '#16a34a' : ev.status === 'started' ? '#2563eb' : '#475569';
-                eventsEl.innerHTML += `<div style="padding:3px 0;border-bottom:1px solid #f1f5f9"><span style="color:#94a3b8;font-size:0.7rem">${time}</span> ${icon} <strong style="color:${statusColor}">${ev.agent}</strong> <span style="color:#64748b">${ev.message || ev.status}</span></div>`;
-                eventsEl.scrollTop = eventsEl.scrollHeight;
-                // Update pipeline vis based on agent
-                const stageMap = {architect:'planning',worker:'building',judge:'judging',pruner:'pruning',pipeline:'complete'};
-                if (stageMap[ev.agent]) setSwarmVis(stageMap[ev.agent]);
-            });
-
-            swarmEventSource.addEventListener('done', async (e) => {
-                const info = JSON.parse(e.data);
-                stopPoll();
-                const btn = document.getElementById('swarm-run-btn');
-                btn.disabled = false;
-                btn.textContent = 'Run Swarm';
-                if (info.state === 'complete') {
-                    setSwarmVis('complete');
-                    // Fetch final result
-                    try {
-                        const resp = await fetch(`${API_BASE}/swarm/status?task_id=${encodeURIComponent(taskId)}`);
-                        const data = await resp.json();
-                        if (data.final_baton) {
-                            document.getElementById('swarm-result').textContent =
-                                data.final_baton.output || JSON.stringify(data.final_baton, null, 2);
-                        }
-                    } catch(_) {}
-                } else {
-                    setSwarmVis('failed');
-                    showSwarmError(info.state);
-                }
-            });
-
-            swarmEventSource.addEventListener('error', (e) => {
-                stopPoll();
-                const title = document.getElementById('swarm-status-title');
-                title.textContent = 'Status: error';
-                const info = JSON.parse(e.data);
-                showSwarmError(info.error || 'connection lost');
-            });
-
-            swarmEventSource.onerror = () => {
-                // SSE connection dropped — fall back to polling
-                if (swarmEventSource) {
-                    swarmEventSource.close();
-                    swarmEventSource = null;
-                    pollSwarmLegacy(taskId);
-                }
-            };
-        }
-
-        function pollSwarmLegacy(taskId) {
-            const eventsEl = document.getElementById('swarm-events');
-            let swarmConnFails = 0;
-            swarmPollTimer = setInterval(async () => {
-                try {
-                    const resp = await fetch(`${API_BASE}/swarm/status?task_id=${encodeURIComponent(taskId)}`);
-                    const data = await resp.json();
-                    swarmConnFails = 0;
-                    if (data.error) { showSwarmError(data.error); stopPoll(); return; }
-
-                    const title = document.getElementById('swarm-status-title');
-                    title.textContent = `Status: ${data.state}${data.checkpoint ? ' — ' + data.checkpoint : ''}`;
-                    setSwarmVis(data.checkpoint || data.state);
-
-                    if (data.events && data.events.length > 0) {
-                        eventsEl.innerHTML = data.events.map(ev => {
-                            const icon = agentIcons[ev.agent] || '•';
-                            const time = new Date(ev.at).toLocaleTimeString();
-                            const statusColor = ev.status === 'done' ? '#16a34a' : ev.status === 'started' ? '#2563eb' : '#475569';
-                            return `<div style="padding:3px 0;border-bottom:1px solid #f1f5f9"><span style="color:#94a3b8;font-size:0.7rem">${time}</span> ${icon} <strong style="color:${statusColor}">${ev.agent}</strong> <span style="color:#64748b">${ev.message || ev.status}</span></div>`;
-                        }).join('');
-                        eventsEl.scrollTop = eventsEl.scrollHeight;
-                    }
-
-                    if (data.state === 'complete' || data.state === 'failed') {
-                        stopPoll();
-                        const btn = document.getElementById('swarm-run-btn');
-                        btn.disabled = false;
-                        btn.textContent = 'Run Swarm';
-                        if (data.state === 'complete' && data.final_baton) {
-                            document.getElementById('swarm-result').textContent =
-                                data.final_baton.output || JSON.stringify(data.final_baton, null, 2);
-                        } else if (data.error) {
-                            showSwarmError(data.error);
-                        }
-                    }
-                } catch(e) {
-                    swarmConnFails++;
-                    if (swarmConnFails >= 5) { showSwarmError('Server stopped responding'); stopPoll(); }
-                }
-            }, 1500);
-        }
-
-        function stopPoll() {
-            if (swarmPollTimer) { clearInterval(swarmPollTimer); swarmPollTimer = null; }
-            if (swarmEventSource) { swarmEventSource.close(); swarmEventSource = null; }
-        }
-
-        function showSwarmError(msg) {
-            document.getElementById('swarm-result').innerHTML = `<span class="error">${msg}</span>`;
-            setSwarmVis('failed');
-        }
-
-        const STAGES = ['planning','building','judging','pruning','complete'];
-        const STAGE_LABELS = { planning:'🏗 Architect', building:'🔨 Worker', judging:'⚖️ Judge', pruning:'✂️ Pruner', complete:'✅ Done', failed:'❌ Failed', submitting:'⏳ Sending' };
-
-        function setSwarmVis(checkpoint) {
-            const vis = document.getElementById('swarm-pipeline-vis');
-            const lower = (checkpoint || '').toLowerCase();
-            const active = STAGES.findIndex(s => lower.includes(s));
-            vis.innerHTML = STAGES.map((s, i) => {
-                let cls = 'step-item';
-                if (i < active) cls += ';opacity:0.4';
-                const label = STAGE_LABELS[s] || s;
-                const isActive = lower.includes(s);
-                return `<div style="${cls};flex:1;min-width:120px;text-align:center;border-color:${isActive?'#00d4ff':'rgba(255,255,255,0.1)'}">${label}</div>`;
-            }).join('<div style="align-self:center;color:#888">→</div>');
         }
 
         // ── Memory ─────────────────────────────────────────────────────────

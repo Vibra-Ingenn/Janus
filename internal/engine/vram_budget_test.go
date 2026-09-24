@@ -17,3 +17,4 @@ func TestVRAMCeilingBytesFromEnvFallsBackOnInvalidValue(t *testing.T) {
 		t.Fatalf("VRAMCeilingBytesFromEnv() = %d, want default %d", got, DefaultVRAMCeiling)
 	}
 }
+

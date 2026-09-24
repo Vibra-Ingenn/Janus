@@ -22,3 +22,4 @@ func openLib(path string) (uintptr, error) {
 func closeLib(handle uintptr) error {
 	return purego.Dlclose(handle)
 }
+

@@ -14,7 +14,7 @@ if (-not (Test-Path $JanusExe)) {
 Write-Host "🜁 Starting Janus Local AI Server..." -ForegroundColor Cyan
 Write-Host "   Backend: Vulkan (RTX 5070)" -ForegroundColor Green
 Write-Host "   Model: $env:JANUS_MODEL_PATH" -ForegroundColor Green
-Write-Host "   API: http://localhost:8080" -ForegroundColor Green
+Write-Host "   API: http://127.0.0.1:8990" -ForegroundColor Green
 Write-Host ""
 
 & $JanusExe

@@ -24,12 +24,9 @@ func (m *mockEngine) Generate(ctx context.Context, tokens []int32) (<-chan strin
 	close(ch)
 	return ch, nil
 }
-func (m *mockEngine) Unload()        {}
+func (m *mockEngine) Unload()         {}
 func (m *mockEngine) Backend() string { return "mock" }
 func (m *mockEngine) Predict(ctx context.Context, prompt string) (string, error) {
-	return m.next(), m.err
-}
-func (m *mockEngine) PredictConstrained(ctx context.Context, prompt, grammar, root string) (string, error) {
 	return m.next(), m.err
 }
 func (m *mockEngine) next() string {
@@ -50,9 +47,12 @@ const doneJSON = `{"tool_call":{"name":"done","arguments":{"summary":"task compl
 // listFilesJSON is a valid "list_files" tool call that always succeeds.
 const listFilesJSON = `{"tool_call":{"name":"list_files","arguments":{"path":"."}}}`
 
+// calculateJSON is a valid "calculate" tool call.
+const calculateJSON = `{"tool_call":{"name":"calculate","arguments":{"expression":"2 + 2"}}}`
+
 func newKernel(eng *mockEngine) *Kernel {
 	reg := tools.NewRegistry()
-	return New(eng, reg)
+	return New(eng, reg, nil)
 }
 
 // ─── helper / pure-function tests ────────────────────────────────────────────
@@ -116,6 +116,40 @@ func TestRepeatedFailuresSkipsLoopGuard(t *testing.T) {
 	}
 }
 
+func TestRepeatedIdenticalCalls(t *testing.T) {
+	args1 := map[string]any{"path": "test.pdf", "language": "eng"}
+	args2 := map[string]any{"path": "test.pdf", "language": "spa"}
+
+	history := []ToolLogEntry{
+		{Call: tools.ToolCall{Name: "ocr_extract", Arguments: args1}, Result: tools.ToolResult{Success: true}},
+		{Call: tools.ToolCall{Name: "ocr_extract", Arguments: args1}, Result: tools.ToolResult{Success: true}},
+		{Call: tools.ToolCall{Name: "ocr_extract", Arguments: args1}, Result: tools.ToolResult{Success: true}},
+	}
+
+	if n := repeatedIdenticalCalls(history, "ocr_extract", args1); n != 3 {
+		t.Fatalf("expected 3 identical calls, got %d", n)
+	}
+
+	if n := repeatedIdenticalCalls(history, "ocr_extract", args2); n != 0 {
+		t.Fatalf("expected 0 identical calls for args2, got %d", n)
+	}
+}
+
+func TestRepeatedIdenticalCallsWithInterruption(t *testing.T) {
+	args1 := map[string]any{"path": "test.pdf", "language": "eng"}
+	args2 := map[string]any{"path": "test.pdf", "language": "spa"}
+
+	history := []ToolLogEntry{
+		{Call: tools.ToolCall{Name: "ocr_extract", Arguments: args1}, Result: tools.ToolResult{Success: true}},
+		{Call: tools.ToolCall{Name: "ocr_extract", Arguments: args2}, Result: tools.ToolResult{Success: true}},
+		{Call: tools.ToolCall{Name: "ocr_extract", Arguments: args1}, Result: tools.ToolResult{Success: true}},
+	}
+
+	if n := repeatedIdenticalCalls(history, "ocr_extract", args1); n != 1 {
+		t.Fatalf("expected 1 identical call due to interruption, got %d", n)
+	}
+}
+
 func TestFormatPromptContainsChatML(t *testing.T) {
 	prompt := formatPrompt("SYSTEM", "USER_TASK", nil)
 	for _, want := range []string{
@@ -146,6 +180,34 @@ func TestFormatPromptReplayHistory(t *testing.T) {
 	}
 }
 
+func TestFormatPromptFormatWarnings(t *testing.T) {
+	history := []ToolLogEntry{
+		{
+			Iteration: 1,
+			Call:      tools.ToolCall{Name: "_loop_guard"},
+			Result:    tools.ToolResult{ToolName: "_loop_guard", Success: false, Error: "repeated call warning"},
+		},
+		{
+			Iteration: 2,
+			Call:      tools.ToolCall{Name: "_parse_error"},
+			Result:    tools.ToolResult{ToolName: "_parse_error", Success: false, Error: "json error", Output: "raw output block"},
+		},
+	}
+	prompt := formatPrompt("SYS", "TASK", history)
+	if strings.Contains(prompt, "_loop_guard") {
+		t.Error("should not format _loop_guard in assistant tool call")
+	}
+	if strings.Contains(prompt, "_parse_error") {
+		t.Error("should not format _parse_error in assistant tool call")
+	}
+	if !strings.Contains(prompt, "SYSTEM WARNING: repeated call warning") {
+		t.Error("loop guard warning missing from system prompt")
+	}
+	if !strings.Contains(prompt, "SYSTEM WARNING: json error") || !strings.Contains(prompt, "raw output block") {
+		t.Error("parse error info missing from system prompt")
+	}
+}
+
 // ─── Kernel struct tests ──────────────────────────────────────────────────────
 
 func TestKernelNewAndStatus(t *testing.T) {
@@ -172,6 +234,9 @@ func TestKernelRunComplete(t *testing.T) {
 	}
 	if result.Summary == "" {
 		t.Error("summary should not be empty")
+	}
+	if result.Verification == nil || result.Verification.Status != "valid" {
+		t.Fatalf("expected valid verification, got %#v", result.Verification)
 	}
 }
 
@@ -240,6 +305,69 @@ func TestKernelRunParseError(t *testing.T) {
 	}
 }
 
+func TestKernelVerifierRequiresToolEvidence(t *testing.T) {
+	eng := &mockEngine{responses: []string{doneJSON}}
+	k := newKernel(eng)
+
+	result := k.Run(context.Background(), "task-missing-tool", "Calculate 2+2 and call done.", nil)
+
+	if result.Status != "complete" {
+		t.Fatalf("expected complete, got %q", result.Status)
+	}
+	if result.Verification == nil {
+		t.Fatal("expected verification result")
+	}
+	if result.Verification.Status != "ambiguous" {
+		t.Fatalf("expected ambiguous verification, got %#v", result.Verification)
+	}
+	found := false
+	for _, issue := range result.Verification.Issues {
+		if issue == "missing_required_tool:calculate" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("expected missing calculate issue, got %#v", result.Verification.Issues)
+	}
+}
+
+func TestKernelVerifierAcceptsToolEvidence(t *testing.T) {
+	eng := &mockEngine{responses: []string{calculateJSON, doneJSON}}
+	k := newKernel(eng)
+
+	result := k.Run(context.Background(), "task-calc", "Calculate 2+2 and call done.", nil)
+
+	if result.Status != "complete" {
+		t.Fatalf("expected complete, got %q", result.Status)
+	}
+	if result.Verification == nil || result.Verification.Status != "valid" {
+		t.Fatalf("expected valid verification, got %#v", result.Verification)
+	}
+}
+
+func TestKernelVerifierEscalatesRepeatedParseErrors(t *testing.T) {
+	// Each response contains "tool_call" (so the forced-prefix nudge is skipped)
+	// but is malformed JSON, producing three consecutive parse errors.
+	eng := &mockEngine{responses: []string{"tool_call not json", "tool_call still bad", "tool_call again bad", doneJSON}}
+	k := newKernel(eng)
+
+	result := k.Run(context.Background(), "task-parse-escalate", "work", nil)
+
+	if result.Status != "complete" {
+		t.Fatalf("expected complete after recovery, got %q", result.Status)
+	}
+	if result.Verification == nil {
+		t.Fatal("expected verification result")
+	}
+	if !result.Verification.EscalationRecommended {
+		t.Fatalf("expected escalation recommendation, got %#v", result.Verification)
+	}
+	if result.Verification.Status != "ambiguous" {
+		t.Fatalf("expected ambiguous verification, got %#v", result.Verification)
+	}
+}
+
 func TestKernelRunLoopGuard(t *testing.T) {
 	// First 3 calls fail (run_command with bad cmd), then done.
 	failCall := `{"tool_call":{"name":"run_command","arguments":{"command":"__nonexistent_janus_test_cmd__"}}}`
@@ -299,7 +427,8 @@ func TestKernelSystemPromptContainsTools(t *testing.T) {
 	if !strings.Contains(sp, "done") {
 		t.Error("system prompt should contain tool list")
 	}
-	if !strings.Contains(sp, "Janus") {
+	if !strings.Contains(strings.ToLower(sp), "janus") {
 		t.Error("system prompt should mention Janus")
 	}
 }
+

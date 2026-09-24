@@ -50,9 +50,9 @@ func (c *CPUBackend) Predict(ctx context.Context, prompt string) (string, error)
 	return c.inner.Predict(ctx, prompt)
 }
 
-// PredictConstrained generates grammar-constrained output (delegates to VulkanBackend).
-func (c *CPUBackend) PredictConstrained(ctx context.Context, prompt, grammarStr, grammarRoot string) (string, error) {
-	return c.inner.PredictConstrained(ctx, prompt, grammarStr, grammarRoot)
+// PredictWithLimit is like Predict, but honors a per-request token cap.
+func (c *CPUBackend) PredictWithLimit(ctx context.Context, prompt string, maxNewTokens int) (string, error) {
+	return c.inner.PredictWithLimit(ctx, prompt, maxNewTokens)
 }
 
 // Unload releases the model from CPU RAM immediately.
@@ -61,6 +61,17 @@ func (c *CPUBackend) Unload() {
 }
 
 // Backend returns "cpu" for logging and routing.
+
+// SetSampler forwards temperature and top-p values to the inner VulkanBackend.
+// SetLoadParams forwards load parameters to the inner VulkanBackend.
+func (c *CPUBackend) SetLoadParams(ctxSize uint32, gpuLayers int) {
+	c.inner.SetLoadParams(ctxSize, 0) // force 0 GPU layers for CPU backend
+}
+
+func (c *CPUBackend) SetSampler(temp float64, topP float64) {
+	c.inner.SetSampler(temp, topP)
+}
+
 func (c *CPUBackend) Backend() string {
 	return "cpu"
 }
@@ -72,3 +83,4 @@ func (c *CPUBackend) Lib() *bridge.LlamaLib {
 
 // ensure CPUBackend satisfies Provider at compile time.
 var _ Provider = (*CPUBackend)(nil)
+

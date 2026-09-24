@@ -25,10 +25,11 @@ Thanks for your interest in contributing to Janus! We're building a high-perform
 
 #### Development
 1. Make your changes
-2. Add tests for new functionality
-3. Run tests: `go test ./...`
-4. Ensure your code passes: `go vet ./...` and `go fmt ./...`
-5. Keep commit messages clear and descriptive
+2. **On Windows, stop all running `janus.exe` before `go build`** — Go cannot overwrite a running executable; the old process keeps going (see README → Development)
+3. Add tests for new functionality
+4. Run tests: `go test ./...`
+5. Ensure your code passes: `go vet ./...` and `go fmt ./...`
+6. Keep commit messages clear and descriptive
 
 #### Submitting a Pull Request
 1. Ensure all tests pass locally

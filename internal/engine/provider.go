@@ -24,9 +24,18 @@ type EngineStatus struct {
 	Backend     string `json:"backend"`
 	ModelLoaded bool   `json:"model_loaded"`
 	ModelPath   string `json:"model_path"`
+	CtxSize     uint32 `json:"ctx_size,omitempty"`
+	GpuLayers   int    `json:"gpu_layers,omitempty"`
 	VRAMUsedMB  int64  `json:"vram_used_mb"`
 	VRAMFreeMB  int64  `json:"vram_free_mb"`
 	VRAMCeilMB  int64  `json:"vram_ceil_mb"`
+}
+
+type activeModelProvider interface {
+	ActiveModelPath() string
+	ActiveModelLoaded() bool
+	ActiveCtxSize() uint32
+	ActiveGPULayers() int
 }
 
 // Provider is the inference backend contract.
@@ -49,12 +58,6 @@ type Provider interface {
 
 	// Predict is a convenience wrapper: Tokenize → Generate → collect stream.
 	Predict(ctx context.Context, prompt string) (string, error)
-
-	// PredictConstrained generates output constrained by a GBNF grammar.
-	// grammarStr is the GBNF grammar text, grammarRoot is the entry rule.
-	// Returns guaranteed-valid text matching the grammar.
-	// Returns an error if the backend does not support grammar constraints.
-	PredictConstrained(ctx context.Context, prompt, grammarStr, grammarRoot string) (string, error)
 
 	// Unload releases all GPU/CPU memory for this model IMMEDIATELY.
 	// It does not wait for the GC. Must be called when the owner is done.
@@ -84,8 +87,20 @@ func GetEngineStatus(p Provider) EngineStatus {
 	}
 	if p != nil {
 		s.Backend = p.Backend()
-		s.ModelPath = strings.TrimSpace(os.Getenv("JANUS_MODEL_PATH"))
-		s.ModelLoaded = s.ModelPath != ""
+		if amp, ok := p.(activeModelProvider); ok {
+			s.ModelLoaded = amp.ActiveModelLoaded()
+			if path := amp.ActiveModelPath(); path != "" {
+				s.ModelPath = DisplayModelPath(path)
+			}
+			s.CtxSize = amp.ActiveCtxSize()
+			s.GpuLayers = amp.ActiveGPULayers()
+		}
+		if s.ModelPath == "" {
+			s.ModelPath = DisplayModelPath(strings.TrimSpace(os.Getenv("JANUS_MODEL_PATH")))
+		}
+		if !s.ModelLoaded {
+			s.ModelLoaded = s.ModelPath != ""
+		}
 	}
 	return s
 }
@@ -122,6 +137,8 @@ func InitFromEnv() (Provider, error) {
 	switch backend {
 	case "cpu":
 		p, err = NewCPUBackend(libPath)
+	case "openrouter":
+		p, err = NewOpenRouterBackend()
 	case "ollama":
 		// Ollama backend is handled at the HTTP layer, not here
 		return nil, nil
@@ -176,3 +193,4 @@ func defaultLibPath() string {
 		return "libllama.so"
 	}
 }
+

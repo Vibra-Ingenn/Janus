@@ -67,8 +67,8 @@ type LlamaLib struct {
 
 	// GetLogitsIth returns a pointer to the float32 logits array for the
 	// i-th token in the last decoded batch (i=0 for single-token decode).
-	// Slice it with unsafe.Slice((*float32)(unsafe.Pointer(ptr)), nVocab).
-	GetLogitsIth func(ctx uintptr, i int32) uintptr
+	// Slice it with unsafe.Slice((*float32)(ptr), nVocab).
+	GetLogitsIth func(ctx uintptr, i int32) unsafe.Pointer
 
 	// NVocab returns the vocabulary size of the model.
 	NVocab func(model uintptr) int32
@@ -87,6 +87,13 @@ type LlamaLib struct {
 	// TokenEOT returns the end-of-turn token ID (e.g. <|im_end|> in ChatML).
 	// May be nil on older builds — check before calling.
 	TokenEOT func(model uintptr) int32
+
+	// TokenIsEOG reports whether a token is any end-of-generation token for this
+	// model (EOS, EOT, <|eot_id|>, <end_of_turn>, etc.). This is the correct,
+	// model-agnostic stop check — using only TokenEOS/TokenEOT misses model-
+	// specific end tokens and causes runaway generation. May be nil on older
+	// builds — check before calling.
+	TokenIsEOG func(vocab uintptr, token int32) bool
 
 	// KVCacheClear clears the entire KV cache of the context.
 	// Call this before each new generation to prevent stale context.
@@ -136,11 +143,6 @@ type LlamaLib struct {
 
 	// SamplerInitMinP creates a min-p sampler.
 	SamplerInitMinP func(p float32, minKeep uint64) uintptr
-
-	// SamplerInitGrammar creates a GBNF grammar-constrained sampler.
-	// vocab is llama_vocab*, grammarStr is the GBNF grammar text,
-	// grammarRoot is the root rule name (e.g. "root").
-	SamplerInitGrammar func(vocab uintptr, grammarStr string, grammarRoot string) uintptr
 
 	// llamaModelDefaultParamsRaw is the raw binding for llama_model_default_params.
 	// On Windows/Linux x64, structs > 8 bytes are returned via a hidden first
@@ -265,6 +267,7 @@ func (lib *LlamaLib) registerSymbols() (retErr error) {
 		{&lib.GetMemory, "llama_get_memory"},
 		{&lib.MemoryClear, "llama_memory_clear"},
 		{&lib.TokenEOT, "llama_token_eot"},
+		{&lib.TokenIsEOG, "llama_vocab_is_eog"},
 		{&lib.BackendLoadAll, "ggml_backend_load_all"},
 		{&lib.llamaModelDefaultParamsRaw, "llama_model_default_params"},
 		{&lib.llamaContextDefaultParamsRaw, "llama_context_default_params"},
@@ -278,7 +281,6 @@ func (lib *LlamaLib) registerSymbols() (retErr error) {
 		{&lib.SamplerInitTopK, "llama_sampler_init_top_k"},
 		{&lib.SamplerInitTopP, "llama_sampler_init_top_p"},
 		{&lib.SamplerInitMinP, "llama_sampler_init_min_p"},
-		{&lib.SamplerInitGrammar, "llama_sampler_init_grammar"},
 	}
 	for _, s := range optionalSymbols {
 		_ = registerSym(s.ptr, lib.handle, s.name) // ignore error
@@ -443,7 +445,7 @@ type LlamaContextParams struct {
 // DefaultContextParams returns a LlamaContextParams with sensible defaults.
 func DefaultContextParams(nCtx uint32, nThreads int) LlamaContextParams {
 	if nCtx == 0 {
-		nCtx = 2048
+		nCtx = 16384
 	}
 	if nThreads <= 0 {
 		nThreads = 4
@@ -532,3 +534,4 @@ func IsOOMResult(code int32) bool {
 func WriteLittleEndianInt32(buf []byte, off int, v int32) {
 	binary.LittleEndian.PutUint32(buf[off:], uint32(v))
 }
+

@@ -8,8 +8,9 @@ import (
 	"sync"
 )
 
-// DefaultVRAMCeiling is 9 GB — leaves ~3 GB headroom on a 12 GB RTX 5070.
-const DefaultVRAMCeiling int64 = 9 * 1024 * 1024 * 1024
+// DefaultVRAMCeiling is 11.8 GiB (12083 MiB) — model weights + KV context budget before OOM risk.
+// Override with JANUS_VRAM_CEILING_MB.
+const DefaultVRAMCeiling int64 = 12083 * 1024 * 1024
 
 // VRAMCeilingEnvVar overrides Janus's internal VRAM budget in MiB.
 const VRAMCeilingEnvVar = "JANUS_VRAM_CEILING_MB"
@@ -28,7 +29,7 @@ type VRAMBudget struct {
 }
 
 // NewVRAMBudget creates a tracker with the given ceiling in bytes.
-// Pass 0 to use DefaultVRAMCeiling (9 GB).
+// Pass 0 to use DefaultVRAMCeiling (11.8 GiB).
 func NewVRAMBudget(ceilingBytes int64) *VRAMBudget {
 	if ceilingBytes <= 0 {
 		ceilingBytes = DefaultVRAMCeiling
@@ -97,11 +98,22 @@ func (v *VRAMBudget) Used() int64 {
 	return v.sumLocked()
 }
 
-// EstimateGGUF returns a conservative VRAM estimate for a GGUF model.
+// EstimateGGUF returns a conservative VRAM estimate for a GGUF model file alone.
 // For quantized models, file size ≈ VRAM footprint (within 5%).
-// We add 10% for KV cache, runtime buffers, and fragmentation.
+// We add 10% for runtime buffers and fragmentation.
 func EstimateGGUF(fileSizeBytes int64) int64 {
 	return int64(float64(fileSizeBytes) * 1.10)
+}
+
+// EstimateModelVRAM returns weights + KV cache estimate for budget tracking.
+// MoE models only keep active experts on GPU, so weight estimate uses ~55% of file size.
+func EstimateModelVRAM(fileSizeBytes int64, ctxSize uint32) int64 {
+	if ctxSize == 0 {
+		ctxSize = 8192
+	}
+	weights := int64(float64(fileSizeBytes) * 0.55)
+	kv_cache := int64(ctxSize) * 384 * 1024
+	return weights + kv_cache
 }
 
 func (v *VRAMBudget) sumLocked() int64 {
@@ -126,3 +138,4 @@ func fmtVRAM(b int64) string {
 		return fmt.Sprintf("%d B", b)
 	}
 }
+

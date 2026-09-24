@@ -23,9 +23,13 @@ This manual is written for operators and IT staff — not developers. If you wan
 
 ## 1. What Is Janus?
 
-Janus is a **local AI assistant** that runs entirely on your own computer. No data ever leaves the machine. It has **30 built-in tools** — things like PDF readers, OCR, Word writers, file processors, and more.
+Janus is a **local AI assistant** that runs entirely on your own computer. No data ever leaves the machine. It ships with built-in tools — file read/write, shell commands, Word in/out, OCR (with Tesseract), and more.
 
-**The big idea:** You tell Janus what you need in plain English. The AI picks the right tools and runs them. You get the finished output — PDFs, Word documents, or whatever format you asked for.
+**The big idea:** You tell Janus what you need in plain English. The AI picks tools and runs them in a loop until the job is done.
+
+**Run it your way:** Web UI, command line, or any OpenAI-compatible app pointed at `http://127.0.0.1:8990/v1`.
+
+**Other options (not required):** Janus is fully usable on its own. The same team also makes [Vibe Engine PRO](https://adeptuscamini.com) — recipe-based automation that can plug into Janus at `http://127.0.0.1:8990/v1`. $8.99/month after a free trial if you want to explore it; otherwise the API is there to build on yourself. [Download](https://adeptuscamini.com/download.html)
 
 ### What Makes It Different
 
@@ -34,7 +38,7 @@ Janus is a **local AI assistant** that runs entirely on your own computer. No da
 | **Local only** | Data never touches the cloud. Runs entirely on your machine. |
 | **Any input** | Accepts Word docs, images, text files, PDFs, typed text, or copy-pastes. |
 | **Any output** | Produces PDFs, Word files, JSON, text, encrypted content, or custom formats. |
-| **30 specialized tools** | The AI doesn't "guess" — it calls real Go functions that do precise work. |
+| **Built-in tools** | The AI calls real Go functions (read/write files, run commands, docx, OCR, etc.) |
 
 ---
 
@@ -54,26 +58,29 @@ You'll see log lines like:
 janus: local engine ready [vulkan]
 janus: memory db ready
 kernel: ready — single-brain loop with 30 tools
-janus v0.1.0 listening on :8080
+janus v0.1.0 listening on 127.0.0.1:8990
 ```
 
 ### Open the WebUI
 
-Go to: <http://localhost:8080>
-
-You'll see five tabs at the top:
+Open **http://127.0.0.1:8990** in your browser. Main tabs:
 
 | Tab | Purpose |
 |-----|---------|
 | **Assistant** | The main "get things done" workspace. Type a goal, upload files, get results. |
 | **Chat** | Conversational — back-and-forth dialogue with memory. |
-| **Swarm** | Advanced multi-agent pipeline (architect → worker → judge). For complex builds. |
-| **Config** | Switch models, toggle HIPAA strict mode, manage prompts. |
+| **Kernel** *(Advanced)* | Run the tool loop directly and watch each step. |
+| **Config** *(Advanced)* | Switch models, view VRAM, edit chat system prompt. |
 | **Memory** | Browse stored facts and past sessions. |
+| **Skills** | Install shareable community automations. |
 
 ### Stop Janus
 
 In the terminal: press **Ctrl+C**. Janus drains cleanly and saves state.
+
+### If you're modifying the code (Windows)
+
+Before rebuilding with `go build`, **stop every `janus.exe`** — Go on Windows cannot replace a running executable, so the old binary keeps running and it looks like your fix failed. Use `.\run.ps1` or run `Get-Process janus | Stop-Process -Force` first. Full list: README → **Pitfalls (learned the hard way)**.
 
 ---
 
@@ -97,10 +104,6 @@ Best for:
 - Multi-turn refinement ("make the letter shorter")
 - Questions that don't need file processing
 
-### C. Swarm (advanced)
-
-Runs multiple specialized agents in sequence (an Architect plans, Workers execute, a Judge reviews). Overkill for most clinical work — reserved for multi-step engineering tasks.
-
 ---
 
 ## 4. How Do I…? — Task Walkthroughs
@@ -112,9 +115,9 @@ Runs multiple specialized agents in sequence (an Architect plans, Workers execut
 3. Type: *"Extract the text from this document and summarize it"*
 4. Click **Get Started**
 
-**What happens under the hood:** Janus calls `auto_ingest` → detects PDF → runs `pdf_extract` → you get the text back, summarized.
+**What happens under the hood:** Janus calls `auto_ingest` or `ocr_extract` depending on file type. Scanned PDFs need **Tesseract** installed for OCR.
 
-If the PDF is a scanned document, Janus will automatically fall back to `ocr_extract` (Tesseract OCR). See [Troubleshooting](#9-troubleshooting) if OCR fails.
+Plain-text PDF extraction is limited in this build — for scans, say *"OCR this document"* or install Tesseract. See [Troubleshooting](#9-troubleshooting).
 
 ---
 
@@ -287,7 +290,7 @@ Check the file size in `workspace/outputs/`. If it's zero bytes, the render tool
 
 ### "Model not loaded" / "Loading…" forever
 
-The model file (`.gguf`) wasn't found at the path in `swarm_config.json`. Open **Config** tab, point it to your downloaded model, click Save. Or run `.\dist\modelget.exe` to download a default one.
+The model file (`.gguf`) wasn't found at `JANUS_MODEL_PATH`. Open **Config** tab, pick your model, click **Save & Load Model**. Or run `.\dist\modelget.exe` to download one into `models\`.
 
 ### Browser keeps trying to open the uploaded PDF instead of uploading it
 
@@ -300,8 +303,8 @@ Hard-refresh the page (**Ctrl+F5**). The page's `<body>` has global `preventDefa
 **Q: Does Janus require internet?**
 A: Only for the initial model download (one time, ~5–10 GB). After that, everything is local. You can use it on an air-gapped machine.
 
-**Q: What's the difference between `pdf_extract` and `auto_ingest`?**
-A: `pdf_extract` only handles PDFs. `auto_ingest` handles *any* file and picks the right parser — it calls `pdf_extract` for PDFs, `docx_extract` for Word, `ocr_extract` for images, etc. **When in doubt, use `auto_ingest` by saying "open this file" or "read this upload".**
+**Q: How do I read an uploaded file?**
+A: Say *"read this upload"* or *"open this file"*. Janus uses `auto_ingest` to detect the type and route to the right tool (`docx_extract`, `ocr_extract`, plain text, etc.). Scanned PDFs need Tesseract for OCR.
 
 **Q: Can Janus read from a network drive or NAS?**
 A: Yes — upload the file through the web UI, or pass a full path (e.g., `Z:\faxes\today.pdf`) in your prompt and Janus will read it directly.

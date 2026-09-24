@@ -1,6 +1,6 @@
 # Janus Tool Reference
 
-Complete reference for all **30 built-in tools** plus **unlimited community tools** available in the Janus kernel. The AI model calls these tools via GBNF-constrained JSON — every built-in tool is pure Go, zero Python, zero external services.
+Complete reference for all **built-in tools** plus **community tools** available in the Janus kernel. The model emits a `tool_call` JSON object; Go parses it from the response (no GBNF grammar constraint — small local models handle that better).
 
 Community tools let anyone add new capabilities by filling in 7 JSON fields — no Go code required. See [`COMMUNITY_TOOLS.md`](COMMUNITY_TOOLS.md) for the full guide.
 
@@ -9,7 +9,7 @@ Community tools let anyone add new capabilities by filling in 7 JSON fields — 
 ```
 User Request → Kernel Loop → AI selects tool → Go executes → Result back to AI → Next tool
                   ↓
-          GBNF grammar constrains output to valid JSON:
+          Model outputs JSON (prompt + parser recover it from prose):
           {"tool_call": {"name": "...", "arguments": {...}}}
 ```
 
@@ -24,7 +24,7 @@ User Request → Kernel Loop → AI selects tool → Go executes → Result back
 | **Filesystem** | read_file, write_file, list_dir, search_files, create_dir, delete | Read/write local files |
 | **Smart** | scaffold, patch_file, append_file, multi_write | High-leverage code generation |
 | **System** | run_command, calculate, get_time, done | Shell access, math, time |
-| **Document — Universal** | auto_ingest, docx_extract, pdf_extract, pdf_diagnose, image_extract, ocr_extract, render_pdf, render_docx | Any document in, any format out |
+| **Document — Universal** | auto_ingest, docx_extract, image_extract, ocr_extract, render_pdf, render_docx | Document in/out (PDF input via OCR; PDF output via render_pdf) |
 | **Data Processing** | (custom extensions via Community tools) | Text transformation, filtering, conversion |
 | **Community** | *(your tools here)* | Any capability — 7 fields, no code required |
 
@@ -118,16 +118,6 @@ Detects file type and dispatches the right extraction tool automatically.
 ### `docx_extract`
 Extracts full text from a Word document (.docx).
 - `path` (string, required)
-
-### `pdf_extract`
-Extracts text from a PDF with automatic xref repair for malformed files.
-- `path` (string, required)
-- Falls back to byte-level text salvage if standard parsing fails
-
-### `pdf_diagnose`
-Inspects PDF structure and reports health without attempting extraction.
-- `path` (string, required)
-- Returns: page count, xref health, encryption status, object count, issues
 
 ### `image_extract`
 Extracts metadata from image files (PNG, JPG, TIFF, BMP).
