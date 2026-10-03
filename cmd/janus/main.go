@@ -316,7 +316,7 @@ func main() {
 	if err != nil {
 		if wantsLocal {
 			log.Fatalf("janus: local engine (%s) failed to start: %v\n"+
-				"    Fix the model path / VRAM / GPU layers, or set INFERENCE_BACKEND=ollama to use Ollama.", reqBackend, err)
+				"    Fix the model path / VRAM / GPU layers, or set INFERENCE_BACKEND=openrouter to use OpenRouter.", reqBackend, err)
 		}
 		log.Printf("janus: local engine unavailable (%v)", err)
 	} else if backend != nil {
