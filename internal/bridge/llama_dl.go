@@ -5,7 +5,7 @@
 // The shared library is loaded at runtime with purego.Dlopen.
 //
 // ABI reference: see internal/bridge/headers/llama.h
-// Target: llama.cpp b1870 or later (b5000+ recommended for Vulkan stability)
+// Target: llama.cpp b11146 (pinned in build.sh / build.ps1; struct layouts match it)
 package bridge
 
 import (
@@ -81,7 +81,7 @@ type LlamaLib struct {
 	// TokenToPiece converts a single token ID to its UTF-8 string fragment.
 	// buf is a pre-allocated byte slice; length is its size.
 	// Returns bytes written, or negative required size on buffer-too-small.
-	TokenToPiece func(model uintptr, token int32, buf uintptr, length int32, lstrip int32, special uint8) int32
+	TokenToPiece func(model uintptr, token int32, buf unsafe.Pointer, length int32, lstrip int32, special uint8) int32
 
 	// TokenEOS returns the end-of-sequence token ID for the model.
 	TokenEOS func(model uintptr) int32
@@ -121,7 +121,7 @@ type LlamaLib struct {
 	// chat points to an array of LlamaChatMessage; returns the total bytes
 	// needed (may exceed length — grow and retry), or -1 if the template is
 	// not recognised. May be nil on older builds.
-	ChatApplyTemplate func(tmpl uintptr, chat uintptr, nMsg uintptr, addAss bool, buf uintptr, length int32) int32
+	ChatApplyTemplate func(tmpl uintptr, chat uintptr, nMsg uintptr, addAss bool, buf unsafe.Pointer, length int32) int32
 
 	// BackendLoadAll loads all available ggml backends (new API, llama.cpp b4000+).
 	// Call this before LoadModelFromFile on newer builds.
@@ -158,15 +158,19 @@ type LlamaLib struct {
 	// SamplerInitMinP creates a min-p sampler.
 	SamplerInitMinP func(p float32, minKeep uint64) uintptr
 
+	// NOTE: the *DefaultParamsRaw bindings take unsafe.Pointer, not uintptr: the
+	// C side writes into a stack buffer, and only a real pointer lets the Go
+	// runtime fix it up if the goroutine stack moves during the call.
+	//
 	// llamaModelDefaultParamsRaw is the raw binding for llama_model_default_params.
 	// On Windows/Linux x64, structs > 8 bytes are returned via a hidden first
 	// argument (caller allocates, passes pointer, callee writes and returns it).
 	// We register it as func(uintptr) uintptr and pass our buffer pointer.
-	llamaModelDefaultParamsRaw func(uintptr) uintptr
+	llamaModelDefaultParamsRaw func(unsafe.Pointer) uintptr
 
 	// llamaContextDefaultParamsRaw is the raw binding for llama_context_default_params.
 	// Same hidden-pointer ABI as llama_model_default_params.
-	llamaContextDefaultParamsRaw func(uintptr) uintptr
+	llamaContextDefaultParamsRaw func(unsafe.Pointer) uintptr
 }
 
 // TryLoadAllBackends attempts to load ggml.dll (libggml.so on Linux,
@@ -393,7 +397,7 @@ func DefaultModelParams(nGPULayers int) LlamaModelParams {
 func (lib *LlamaLib) ModelDefaultParams(nGPULayers int) LlamaModelParams {
 	if lib.llamaModelDefaultParamsRaw != nil {
 		var buf [128]byte // oversized so any future growth is safe
-		lib.llamaModelDefaultParamsRaw(uintptr(unsafe.Pointer(&buf[0])))
+		lib.llamaModelDefaultParamsRaw(unsafe.Pointer(&buf[0]))
 
 		// Dump raw bytes so we can confirm the actual C struct layout.
 		// Look for the n_gpu_layers field offset in these logs.
@@ -486,7 +490,7 @@ func (lib *LlamaLib) ContextDefaultParams(nCtx uint32, nThreads int) LlamaContex
 	if lib.llamaContextDefaultParamsRaw != nil {
 		log.Printf("bridge: using DLL llama_context_default_params (struct size %d bytes)", LlamaContextParamsSize)
 		var buf [LlamaContextParamsSize]byte
-		lib.llamaContextDefaultParamsRaw(uintptr(unsafe.Pointer(&buf[0])))
+		lib.llamaContextDefaultParamsRaw(unsafe.Pointer(&buf[0]))
 		p := *(*LlamaContextParams)(unsafe.Pointer(&buf[0]))
 		if nCtx > 0 {
 			p.NCtx = nCtx
@@ -529,13 +533,6 @@ type LlamaBatch struct {
 	AllPos1  int32
 	AllSeqID int32
 	_tpad    int32 //nolint:unused
-}
-
-// UnsafePtr returns an unsafe.Pointer to p, which can be cast to uintptr for
-// passing to LlamaLib function calls.
-// The caller must call runtime.KeepAlive(p) after any DLL call that uses the pointer.
-func UnsafePtr[T any](p *T) uintptr {
-	return uintptr(unsafe.Pointer(p))
 }
 
 // IsOOMResult returns true if the llama_decode return code indicates OOM.

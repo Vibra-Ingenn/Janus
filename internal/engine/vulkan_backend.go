@@ -510,7 +510,7 @@ func (v *VulkanBackend) GenerateWithInfo(ctx context.Context, tokens []int32, ma
 			// Detokenize the selected token to a UTF-8 string piece.
 			n := v.lib.TokenToPiece(
 				vocabTarget, best,
-				uintptr(unsafe.Pointer(&pieceBuf[0])),
+				unsafe.Pointer(&pieceBuf[0]),
 				int32(len(pieceBuf)),
 				0, 0,
 			)
@@ -519,7 +519,7 @@ func (v *VulkanBackend) GenerateWithInfo(ctx context.Context, tokens []int32, ma
 				pieceBuf = make([]byte, -n+1)
 				n = v.lib.TokenToPiece(
 					vocabTarget, best,
-					uintptr(unsafe.Pointer(&pieceBuf[0])),
+					unsafe.Pointer(&pieceBuf[0]),
 					int32(len(pieceBuf)),
 					0, 0,
 				)

@@ -126,8 +126,4 @@ echo ""
 echo "Usage:"
 echo "  Copy dist/ anywhere. Place your .gguf model in dist/models/"
 echo "  Set JANUS_MODEL_PATH=./models/yourmodel.gguf in .env"
-if command -v patchelf >/dev/null 2>&1; then
-    echo "  Run: ./dist/janus"
-else
-    echo "  Run: LD_LIBRARY_PATH=./dist ./dist/janus"
-fi
+echo "  Run: ./dist/janus"

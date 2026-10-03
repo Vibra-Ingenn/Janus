@@ -67,7 +67,7 @@ func (lib *LlamaLib) ApplyChatTemplate(tmpl string, msgs []ChatMessage, addAssis
 			uintptr(unsafe.Pointer(&chat[0])),
 			uintptr(len(chat)),
 			addAssistant,
-			uintptr(unsafe.Pointer(&buf[0])),
+			unsafe.Pointer(&buf[0]),
 			int32(len(buf)),
 		)
 		runtime.KeepAlive(tmplC)

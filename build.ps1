@@ -3,12 +3,12 @@
 # then builds the janus.exe binary.
 #
 # Usage:
-#   .\build.ps1                    # auto-detect latest llama.cpp release
-#   .\build.ps1 -LlamaVersion b5000 # pin a specific release tag
+#   .\build.ps1                    # use the pinned llama.cpp release (b11146)
+#   .\build.ps1 -LlamaVersion b5400 # use another release tag
 #   .\build.ps1 -SkipDownload      # use DLLs already in lib\windows\
 
 param(
-    [string]$LlamaVersion = "",
+    [string]$LlamaVersion = "b11146",
     [switch]$SkipDownload
 )
 
@@ -21,32 +21,10 @@ $DistDir  = Join-Path $Root "dist"
 $BinName  = "janus.exe"
 
 # ---------------------------------------------------------------------------
-# 1. Resolve the llama.cpp release version to download
+# 1. llama.cpp release version (pinned default; override with -LlamaVersion)
 # ---------------------------------------------------------------------------
 
-function Get-LatestLlamaRelease {
-    # /releases/latest returns v0.x.x (no binaries). Binary builds use bXXXX tags.
-    $api = "https://api.github.com/repos/ggerganov/llama.cpp/releases?per_page=20"
-    $headers = @{ "User-Agent" = "janus-build-script" }
-    try {
-        $releases = Invoke-RestMethod -Uri $api -Headers $headers
-        $binRelease = $releases | Where-Object { $_.tag_name -match '^b\d+$' -and $_.assets.Count -gt 0 } | Select-Object -First 1
-        if ($binRelease) {
-            return $binRelease.tag_name
-        }
-        Write-Warning "No binary release found in recent releases, using fallback."
-        return "b11326"
-    } catch {
-        Write-Warning "Could not fetch releases from GitHub: $_"
-        return "b11326"
-    }
-}
-
 if (-not $SkipDownload) {
-    if ($LlamaVersion -eq "") {
-        Write-Host "Fetching latest llama.cpp release tag..."
-        $LlamaVersion = Get-LatestLlamaRelease
-    }
     Write-Host "Using llama.cpp $LlamaVersion"
 }
 
