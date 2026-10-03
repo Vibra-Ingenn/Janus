@@ -5,13 +5,14 @@
 // The shared library is loaded at runtime with purego.Dlopen.
 //
 // ABI reference: see internal/bridge/headers/llama.h
-// Target: llama.cpp b1870 or later (b5000+ recommended for Vulkan stability)
+// Target: llama.cpp b11146 (pinned in build.sh / build.ps1; struct layouts match it)
 package bridge
 
 import (
 	"encoding/binary"
 	"fmt"
 	"log"
+	"runtime"
 	"unsafe"
 
 	"github.com/ebitengine/purego"
@@ -26,18 +27,19 @@ type LlamaLib struct {
 	handle uintptr
 
 	// LoadModelFromFile loads a GGUF model file and returns an opaque handle.
-	// paramsPtr must be unsafe.Pointer to a LlamaModelParams struct.
+	// llama_load_model_from_file takes llama_model_params BY VALUE; the
+	// platform ABI details live in abi_unix.go / abi_windows.go.
 	// Returns 0 on failure (check logs from the library).
-	LoadModelFromFile func(path string, paramsPtr uintptr) uintptr
+	LoadModelFromFile func(path string, params *LlamaModelParams) uintptr
 
 	// FreeModel releases the model and its GPU/CPU memory.
 	// Must be called exactly once per successful LoadModelFromFile.
 	FreeModel func(model uintptr)
 
 	// NewContextWithModel creates an inference context for a loaded model.
-	// paramsPtr must be unsafe.Pointer to a LlamaContextParams struct.
+	// llama_context_params is passed BY VALUE (see abi_*.go).
 	// Returns 0 on failure (e.g. GPU OOM).
-	NewContextWithModel func(model uintptr, paramsPtr uintptr) uintptr
+	NewContextWithModel func(model uintptr, params *LlamaContextParams) uintptr
 
 	// FreeContext releases the inference context and its KV cache.
 	// Must be called exactly once per successful NewContextWithModel.
@@ -52,12 +54,12 @@ type LlamaLib struct {
 	// vocabOrModel is llama_vocab* on newer builds (b5000+), llama_model* on older.
 	// tokensPtr is unsafe.Pointer to a []int32 backing array.
 	// Returns the number of tokens written, or a negative error code.
-	Tokenize func(vocabOrModel uintptr, text string, textLen int32, tokensPtr uintptr, nMax int32, addSpecial uint8, parseSpecial uint8) int32
+	Tokenize func(vocabOrModel uintptr, text string, textLen int32, tokensPtr unsafe.Pointer, nMax int32, addSpecial uint8, parseSpecial uint8) int32
 
 	// Decode runs a forward pass on the provided batch.
-	// batchPtr is unsafe.Pointer to a LlamaBatch struct.
+	// llama_batch is passed BY VALUE (see abi_*.go).
 	// Returns 0 on success, 1 on OOM, -1 on other error.
-	Decode func(ctx uintptr, batchPtr uintptr) int32
+	Decode func(ctx uintptr, batch *LlamaBatch) int32
 
 	// BackendInit initialises all ggml backends (call once at startup).
 	BackendInit func()
@@ -79,7 +81,7 @@ type LlamaLib struct {
 	// TokenToPiece converts a single token ID to its UTF-8 string fragment.
 	// buf is a pre-allocated byte slice; length is its size.
 	// Returns bytes written, or negative required size on buffer-too-small.
-	TokenToPiece func(model uintptr, token int32, buf uintptr, length int32, lstrip int32, special uint8) int32
+	TokenToPiece func(model uintptr, token int32, buf unsafe.Pointer, length int32, lstrip int32, special uint8) int32
 
 	// TokenEOS returns the end-of-sequence token ID for the model.
 	TokenEOS func(model uintptr) int32
@@ -119,7 +121,7 @@ type LlamaLib struct {
 	// chat points to an array of LlamaChatMessage; returns the total bytes
 	// needed (may exceed length — grow and retry), or -1 if the template is
 	// not recognised. May be nil on older builds.
-	ChatApplyTemplate func(tmpl uintptr, chat uintptr, nMsg uintptr, addAss bool, buf uintptr, length int32) int32
+	ChatApplyTemplate func(tmpl unsafe.Pointer, chat unsafe.Pointer, nMsg uintptr, addAss bool, buf unsafe.Pointer, length int32) int32
 
 	// BackendLoadAll loads all available ggml backends (new API, llama.cpp b4000+).
 	// Call this before LoadModelFromFile on newer builds.
@@ -156,18 +158,23 @@ type LlamaLib struct {
 	// SamplerInitMinP creates a min-p sampler.
 	SamplerInitMinP func(p float32, minKeep uint64) uintptr
 
+	// NOTE: the *DefaultParamsRaw bindings take unsafe.Pointer, not uintptr: the
+	// C side writes into a stack buffer, and only a real pointer lets the Go
+	// runtime fix it up if the goroutine stack moves during the call.
+	//
 	// llamaModelDefaultParamsRaw is the raw binding for llama_model_default_params.
 	// On Windows/Linux x64, structs > 8 bytes are returned via a hidden first
 	// argument (caller allocates, passes pointer, callee writes and returns it).
-	// We register it as func(uintptr) uintptr and pass our buffer pointer.
-	llamaModelDefaultParamsRaw func(uintptr) uintptr
+	// We register it as func(unsafe.Pointer) uintptr and pass our buffer pointer.
+	llamaModelDefaultParamsRaw func(unsafe.Pointer) uintptr
 
 	// llamaContextDefaultParamsRaw is the raw binding for llama_context_default_params.
 	// Same hidden-pointer ABI as llama_model_default_params.
-	llamaContextDefaultParamsRaw func(uintptr) uintptr
+	llamaContextDefaultParamsRaw func(unsafe.Pointer) uintptr
 }
 
-// TryLoadAllBackends attempts to load ggml.dll from the same directory as
+// TryLoadAllBackends attempts to load ggml.dll (libggml.so on Linux,
+// libggml.dylib on macOS) from the same directory as
 // llamaLibPath and call ggml_backend_load_all() on it.  This registers the
 // separate backend plugins (ggml-vulkan.dll, ggml-cpu-*.dll, …) that newer
 // llama.cpp builds require before any model can be loaded.
@@ -184,10 +191,14 @@ func TryLoadAllBackends(llamaLibPath string) {
 		dir = "." // no separator found — same directory
 	}
 
-	candidates := []string{
-		dir + "/ggml.dll",
-		dir + "\\ggml.dll",
-		"ggml.dll",
+	var candidates []string
+	switch runtime.GOOS {
+	case "windows":
+		candidates = []string{dir + "/ggml.dll", dir + "\\ggml.dll", "ggml.dll"}
+	case "darwin":
+		candidates = []string{dir + "/libggml.dylib", "libggml.dylib"}
+	default:
+		candidates = []string{dir + "/libggml.so", "libggml.so", dir + "/libggml-base.so", "libggml-base.so"}
 	}
 
 	for _, path := range candidates {
@@ -210,7 +221,7 @@ func TryLoadAllBackends(llamaLibPath string) {
 		// Leave the handle open — the DLL must stay loaded.
 		return
 	}
-	log.Printf("bridge: TryLoadAllBackends: ggml.dll NOT found in any candidate path — Vulkan may fail to initialise")
+	log.Printf("bridge: TryLoadAllBackends: ggml library NOT found in any candidate path — Vulkan may fail to initialise")
 }
 
 // Open loads the llama.cpp shared library at libPath and registers all
@@ -251,13 +262,10 @@ func (lib *LlamaLib) registerSymbols() (retErr error) {
 		name string
 	}
 	symbols := []sym{
-		{&lib.LoadModelFromFile, "llama_load_model_from_file"},
 		{&lib.FreeModel, "llama_free_model"},
-		{&lib.NewContextWithModel, "llama_new_context_with_model"},
 		{&lib.FreeContext, "llama_free"},
 		{&lib.ModelGetVocab, "llama_model_get_vocab"},
 		{&lib.Tokenize, "llama_tokenize"},
-		{&lib.Decode, "llama_decode"},
 		{&lib.BackendInit, "llama_backend_init"},
 		{&lib.BackendFree, "llama_backend_free"},
 		{&lib.GetLogitsIth, "llama_get_logits_ith"},
@@ -271,6 +279,11 @@ func (lib *LlamaLib) registerSymbols() (retErr error) {
 		if err := registerSym(s.ptr, lib.handle, s.name); err != nil {
 			return fmt.Errorf("bridge: register %q: %w", s.name, err)
 		}
+	}
+
+	// Functions that take a struct by value (ABI differs per OS).
+	if err := lib.registerStructFuncs(); err != nil {
+		return err
 	}
 
 	// Optional symbols - don't fail if missing
@@ -318,9 +331,12 @@ func registerSym(fptr any, handle uintptr, name string) (retErr error) {
 // ---------------------------------------------------------------------------
 // Param structs — Go mirrors of the C structs in llama.h
 //
-// Layout is for llama.cpp b5000+ on 64-bit (Windows and Linux, same ABI).
-// If you are on an older build, compare against internal/bridge/headers/llama.h
-// and adjust field offsets accordingly.
+// Layout is for llama.cpp b11146 (llama.h of that tag), 64-bit. Other tags may
+// move fields (e.g. b5400 has no n_rs_seq/n_outputs_max*): re-check llama.h and
+// llama_dl_test.go before changing the pinned version.
+//
+// Supported: linux/amd64 and windows/amd64. arm64 and macOS are untested and
+// unsupported (see abi_unix.go).
 //
 // IMPORTANT: These structs are passed to C code via unsafe.Pointer.
 // The Go compiler will NOT reorder fields (they are in declaration order).
@@ -353,7 +369,7 @@ const LlamaModelParamsSize = 128
 //	16      4     n_gpu_layers  (int32, default -1 = all layers on GPU)
 //	20      4     split_mode    (int32 enum, default LAYER=1)
 //	24+     ...   version-dependent fields — filled by DLL defaults
-//	Total: 128 bytes (over-allocated; safe)
+//	Total: 128 bytes (over-allocated; real size is 80 on b11146)
 type LlamaModelParams struct {
 	Devices    uintptr   // NULL = use all available backends
 	_ptr2      uintptr   //nolint:unused
@@ -381,7 +397,7 @@ func DefaultModelParams(nGPULayers int) LlamaModelParams {
 func (lib *LlamaLib) ModelDefaultParams(nGPULayers int) LlamaModelParams {
 	if lib.llamaModelDefaultParamsRaw != nil {
 		var buf [128]byte // oversized so any future growth is safe
-		lib.llamaModelDefaultParamsRaw(uintptr(unsafe.Pointer(&buf[0])))
+		lib.llamaModelDefaultParamsRaw(unsafe.Pointer(&buf[0]))
 
 		// Dump raw bytes so we can confirm the actual C struct layout.
 		// Look for the n_gpu_layers field offset in these logs.
@@ -398,8 +414,7 @@ func (lib *LlamaLib) ModelDefaultParams(nGPULayers int) LlamaModelParams {
 
 		p := *(*LlamaModelParams)(unsafe.Pointer(&buf[0]))
 		// NGPULayers is confirmed at offset 16. Override with caller's value.
-		// -1 (from env) is remapped to 9999 upstream, but DLL default is -1
-		// which means all layers. Only override if caller explicitly set one.
+		// Negative = keep the library default (callers map -1 to "all" first).
 		if nGPULayers >= 0 {
 			p.NGPULayers = int32(nGPULayers)
 		}
@@ -413,7 +428,11 @@ func (lib *LlamaLib) ModelDefaultParams(nGPULayers int) LlamaModelParams {
 // llama.cpp version. All bytes beyond the named fields are zero-initialized,
 // ensuring pointer fields like `smpl` (sampler chain) are NULL by default.
 // The DLL must not read garbage past the struct boundary.
-const LlamaContextParamsSize = 512
+//
+// By-value passing on Linux/macOS copies the whole buffer onto the stack, and
+// purego allows at most 26 stack words (208 bytes) per call, so this must stay
+// <= 192. sizeof(llama_context_params) is 160 on the pinned llama.cpp (b11146).
+const LlamaContextParamsSize = 192
 
 // LlamaContextParams mirrors llama_context_params in llama.h.
 // Named fields cover the stable head of the struct; the rest is a zeroed
@@ -424,18 +443,24 @@ const LlamaContextParamsSize = 512
 //	4       4     n_batch         (uint32, default 512)
 //	8       4     n_ubatch        (uint32, default 512)
 //	12      4     n_seq_max       (uint32, default 1)
-//	16      4     n_threads       (int32)
-//	20      4     n_threads_batch (int32)
-//	24+     ...   all other fields zeroed — NULL pointers, 0 enums
-//	Total: 512 bytes (over-allocated; safe)
+//	16      4     n_rs_seq
+//	20      4     n_outputs_max
+//	24      4     n_outputs_max_per_seq
+//	28      4     n_threads       (int32)
+//	32      4     n_threads_batch (int32)
+//	36+     ...   all other fields come from the DLL defaults (b11146)
+//	Total: 192 bytes (over-allocated; real size is 160 on b11146)
 type LlamaContextParams struct {
-	NCtx          uint32
-	NBatch        uint32
-	NUbatch       uint32
-	NSeqMax       uint32
-	NThreads      int32
-	NThreadsBatch int32
-	_rest         [LlamaContextParamsSize - 24]byte //nolint:unused
+	NCtx              uint32
+	NBatch            uint32
+	NUbatch           uint32
+	NSeqMax           uint32
+	NRsSeq            uint32
+	NOutputsMax       uint32
+	NOutputsMaxPerSeq uint32
+	NThreads          int32
+	NThreadsBatch     int32
+	_rest             [LlamaContextParamsSize - 36]byte //nolint:unused
 }
 
 // DefaultContextParams returns a LlamaContextParams with sensible defaults.
@@ -465,7 +490,7 @@ func (lib *LlamaLib) ContextDefaultParams(nCtx uint32, nThreads int) LlamaContex
 	if lib.llamaContextDefaultParamsRaw != nil {
 		log.Printf("bridge: using DLL llama_context_default_params (struct size %d bytes)", LlamaContextParamsSize)
 		var buf [LlamaContextParamsSize]byte
-		lib.llamaContextDefaultParamsRaw(uintptr(unsafe.Pointer(&buf[0])))
+		lib.llamaContextDefaultParamsRaw(unsafe.Pointer(&buf[0]))
 		p := *(*LlamaContextParams)(unsafe.Pointer(&buf[0]))
 		if nCtx > 0 {
 			p.NCtx = nCtx
@@ -492,11 +517,9 @@ func (lib *LlamaLib) ContextDefaultParams(nCtx uint32, nThreads int) LlamaContex
 //	32      8     n_seq_id      (*int32)
 //	40      8     seq_id        (**int32)
 //	48      8     logits        (*int8)
-//	56      4     all_pos_0     (llama_pos / int32)
-//	60      4     all_pos_1     (llama_pos / int32)
-//	64      4     all_seq_id    (llama_seq_id / int32)
-//	68      4     _trailing_pad
-//	Total: 72 bytes
+//	56      16    AllPos0/AllPos1/AllSeqID/_tpad: NOT in llama.h since b5000
+//	              (real llama_batch is 56 bytes); trailing padding, ignored by the lib.
+//	Total: 72 bytes (56 real + 16 padding)
 type LlamaBatch struct {
 	NTokens  int32
 	_pad     int32 //nolint:unused
@@ -510,13 +533,6 @@ type LlamaBatch struct {
 	AllPos1  int32
 	AllSeqID int32
 	_tpad    int32 //nolint:unused
-}
-
-// UnsafePtr returns an unsafe.Pointer to p, which can be cast to uintptr for
-// passing to LlamaLib function calls.
-// The caller must call runtime.KeepAlive(p) after any DLL call that uses the pointer.
-func UnsafePtr[T any](p *T) uintptr {
-	return uintptr(unsafe.Pointer(p))
 }
 
 // IsOOMResult returns true if the llama_decode return code indicates OOM.

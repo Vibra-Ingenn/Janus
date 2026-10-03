@@ -4,9 +4,14 @@
 # then builds the janus binary.
 #
 # Usage:
-#   ./build.sh                      # auto-detect latest llama.cpp release
-#   ./build.sh --version b5000      # pin a specific release tag
+#   ./build.sh                      # use the pinned llama.cpp release (see below)
+#   ./build.sh --version b5400      # use another llama.cpp release tag
 #   ./build.sh --skip-download      # use .so files already in lib/linux/
+#
+# The struct layouts in internal/bridge/llama_dl.go match llama.cpp b11146
+# (llama.h of that tag); other tags may need those buffers adjusted.
+# Requires Go >= 1.25 (purego v0.11); with GOTOOLCHAIN=auto an older go
+# command downloads the right toolchain by itself.
 #
 # WSL2 note: Vulkan is bridged from Windows via the GPU driver.
 #   NVIDIA RTX on WSL2 — Vulkan works out of the box with recent drivers.
@@ -18,7 +23,7 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 LIB_DIR="$ROOT/lib/linux"
 DIST_DIR="$ROOT/dist"
 BIN_NAME="janus"
-LLAMA_VERSION=""
+LLAMA_VERSION="b11146"
 SKIP_DOWNLOAD=false
 
 # ---------------------------------------------------------------------------
@@ -26,7 +31,9 @@ SKIP_DOWNLOAD=false
 # ---------------------------------------------------------------------------
 while [[ $# -gt 0 ]]; do
     case "$1" in
-        --version) LLAMA_VERSION="$2"; shift 2 ;;
+        --version)
+            [[ $# -ge 2 && -n "$2" ]] || { echo "--version requires a llama.cpp tag (e.g. b11146)"; exit 1; }
+            LLAMA_VERSION="$2"; shift 2 ;;
         --skip-download) SKIP_DOWNLOAD=true; shift ;;
         *) echo "Unknown argument: $1"; exit 1 ;;
     esac
@@ -42,21 +49,10 @@ if grep -qi "microsoft" /proc/version 2>/dev/null; then
 fi
 
 # ---------------------------------------------------------------------------
-# 1. Resolve llama.cpp release version
+# 1. llama.cpp release version (pinned; override with --version)
 # ---------------------------------------------------------------------------
-get_latest_release() {
-    curl -fsSL \
-        -H "User-Agent: janus-build-script" \
-        "https://api.github.com/repos/ggerganov/llama.cpp/releases/latest" \
-    | grep '"tag_name"' \
-    | sed 's/.*"tag_name": "\(.*\)".*/\1/'
-}
-
+cd "$ROOT"
 if [ "$SKIP_DOWNLOAD" = false ]; then
-    if [ -z "$LLAMA_VERSION" ]; then
-        echo "Fetching latest llama.cpp release tag..."
-        LLAMA_VERSION="$(get_latest_release || echo 'b5000')"
-    fi
     echo "Using llama.cpp $LLAMA_VERSION"
 fi
 
@@ -64,26 +60,29 @@ fi
 # 2. Download and extract Vulkan .so files
 # ---------------------------------------------------------------------------
 if [ "$SKIP_DOWNLOAD" = false ]; then
-    ZIP_NAME="llama-${LLAMA_VERSION}-bin-ubuntu-vulkan-x64.zip"
-    ZIP_URL="https://github.com/ggerganov/llama.cpp/releases/download/${LLAMA_VERSION}/${ZIP_NAME}"
-    ZIP_PATH="/tmp/${ZIP_NAME}"
+    TGZ_NAME="llama-${LLAMA_VERSION}-bin-ubuntu-vulkan-x64.tar.gz"
+    TGZ_URL="https://github.com/ggml-org/llama.cpp/releases/download/${LLAMA_VERSION}/${TGZ_NAME}"
 
-    echo "Downloading ${ZIP_NAME}..."
-    curl -fL --progress-bar -o "$ZIP_PATH" "$ZIP_URL"
+    WORK_DIR="$(mktemp -d)"
+    trap 'rm -rf "$WORK_DIR"' EXIT
 
+    echo "Downloading ${TGZ_NAME}..."
+    curl -fL --progress-bar -o "$WORK_DIR/$TGZ_NAME" "$TGZ_URL"
+    tar -xzf "$WORK_DIR/$TGZ_NAME" -C "$WORK_DIR"
+
+    # Replace any previous libs. Keep symlinks (libggml.so.0 -> ...): libllama.so
+    # is linked against the versioned sonames.
+    mapfile -t NEW_LIBS < <(find "$WORK_DIR" \( -name "libllama.so*" -o -name "libggml*.so*" \))
+    if [ "${#NEW_LIBS[@]}" -eq 0 ]; then
+        echo "ERROR: no libllama/libggml .so files found in ${TGZ_NAME}."
+        exit 1
+    fi
     mkdir -p "$LIB_DIR"
-
-    EXTRACT_DIR="/tmp/llama-extract-$$"
-    mkdir -p "$EXTRACT_DIR"
-    unzip -q "$ZIP_PATH" -d "$EXTRACT_DIR"
-
-    # Copy all .so files regardless of sub-folder structure in the zip
-    find "$EXTRACT_DIR" -name "*.so" -exec cp {} "$LIB_DIR/" \;
-
-    rm -rf "$EXTRACT_DIR" "$ZIP_PATH"
+    rm -f "$LIB_DIR"/lib*.so*
+    cp -P "${NEW_LIBS[@]}" "$LIB_DIR/"
 
     echo "Shared libraries extracted to $LIB_DIR:"
-    ls -lh "$LIB_DIR"/*.so 2>/dev/null || echo "  (none found — check zip contents)"
+    ls -lh "$LIB_DIR"/*.so 2>/dev/null || echo "  (none found — check archive contents)"
 else
     echo "Skipping download (--skip-download)."
 fi
@@ -98,9 +97,6 @@ fi
 # ---------------------------------------------------------------------------
 # 3. Build the Go binary
 # ---------------------------------------------------------------------------
-echo "Running go mod tidy..."
-go mod tidy
-
 mkdir -p "$DIST_DIR"
 
 echo "Building janus..."
@@ -110,7 +106,7 @@ go build -ldflags "-s -w" -o "$DIST_DIR/$BIN_NAME" ./cmd/janus
 # 4. Assemble dist/ — copy .so files alongside the binary
 # ---------------------------------------------------------------------------
 echo "Assembling dist/ ..."
-cp "$LIB_DIR"/*.so "$DIST_DIR/" 2>/dev/null || true
+cp -P "$LIB_DIR"/lib*.so* "$DIST_DIR/" 2>/dev/null || true
 
 mkdir -p "$DIST_DIR/models"
 
@@ -130,8 +126,4 @@ echo ""
 echo "Usage:"
 echo "  Copy dist/ anywhere. Place your .gguf model in dist/models/"
 echo "  Set JANUS_MODEL_PATH=./models/yourmodel.gguf in .env"
-if command -v patchelf >/dev/null 2>&1; then
-    echo "  Run: ./dist/janus"
-else
-    echo "  Run: LD_LIBRARY_PATH=./dist ./dist/janus"
-fi
+echo "  Run: ./dist/janus"

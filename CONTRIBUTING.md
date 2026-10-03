@@ -21,7 +21,7 @@ Thanks for your interest in contributing to Janus! We're building a high-perform
 1. Fork the repository
 2. Clone your fork: `git clone https://github.com/YOUR-USERNAME/janus.git`
 3. Create a feature branch: `git checkout -b feat/your-feature-name`
-4. Install Go 1.21+
+4. Install Go 1.25+
 
 #### Development
 1. Make your changes
