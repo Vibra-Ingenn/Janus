@@ -34,7 +34,7 @@ if (-not $SkipDownload) {
 
 if (-not $SkipDownload) {
     $ZipName = "llama-$LlamaVersion-bin-win-vulkan-x64.zip"
-    $ZipUrl  = "https://github.com/ggerganov/llama.cpp/releases/download/$LlamaVersion/$ZipName"
+    $ZipUrl  = "https://github.com/ggml-org/llama.cpp/releases/download/$LlamaVersion/$ZipName"
     $ZipPath = Join-Path $env:TEMP $ZipName
 
     Write-Host "Downloading $ZipName..."

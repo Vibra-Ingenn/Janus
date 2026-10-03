@@ -54,7 +54,7 @@ type LlamaLib struct {
 	// vocabOrModel is llama_vocab* on newer builds (b5000+), llama_model* on older.
 	// tokensPtr is unsafe.Pointer to a []int32 backing array.
 	// Returns the number of tokens written, or a negative error code.
-	Tokenize func(vocabOrModel uintptr, text string, textLen int32, tokensPtr uintptr, nMax int32, addSpecial uint8, parseSpecial uint8) int32
+	Tokenize func(vocabOrModel uintptr, text string, textLen int32, tokensPtr unsafe.Pointer, nMax int32, addSpecial uint8, parseSpecial uint8) int32
 
 	// Decode runs a forward pass on the provided batch.
 	// llama_batch is passed BY VALUE (see abi_*.go).
@@ -121,7 +121,7 @@ type LlamaLib struct {
 	// chat points to an array of LlamaChatMessage; returns the total bytes
 	// needed (may exceed length — grow and retry), or -1 if the template is
 	// not recognised. May be nil on older builds.
-	ChatApplyTemplate func(tmpl uintptr, chat uintptr, nMsg uintptr, addAss bool, buf unsafe.Pointer, length int32) int32
+	ChatApplyTemplate func(tmpl unsafe.Pointer, chat unsafe.Pointer, nMsg uintptr, addAss bool, buf unsafe.Pointer, length int32) int32
 
 	// BackendLoadAll loads all available ggml backends (new API, llama.cpp b4000+).
 	// Call this before LoadModelFromFile on newer builds.
@@ -165,7 +165,7 @@ type LlamaLib struct {
 	// llamaModelDefaultParamsRaw is the raw binding for llama_model_default_params.
 	// On Windows/Linux x64, structs > 8 bytes are returned via a hidden first
 	// argument (caller allocates, passes pointer, callee writes and returns it).
-	// We register it as func(uintptr) uintptr and pass our buffer pointer.
+	// We register it as func(unsafe.Pointer) uintptr and pass our buffer pointer.
 	llamaModelDefaultParamsRaw func(unsafe.Pointer) uintptr
 
 	// llamaContextDefaultParamsRaw is the raw binding for llama_context_default_params.

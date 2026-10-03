@@ -336,7 +336,7 @@ func (v *VulkanBackend) Tokenize(text string) ([]int32, error) {
 		tokTarget,
 		text,
 		int32(len(text)),
-		uintptr(unsafe.Pointer(&buf[0])),
+		unsafe.Pointer(&buf[0]),
 		maxTokens,
 		1, // add BOS
 		1, // parse special tokens (<|eot_id|>, <|im_end|>, …) as control tokens, not text

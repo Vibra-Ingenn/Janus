@@ -63,8 +63,8 @@ func (lib *LlamaLib) ApplyChatTemplate(tmpl string, msgs []ChatMessage, addAssis
 
 	for attempt := 0; attempt < 2; attempt++ {
 		n := lib.ChatApplyTemplate(
-			uintptr(unsafe.Pointer(&tmplC[0])),
-			uintptr(unsafe.Pointer(&chat[0])),
+			unsafe.Pointer(&tmplC[0]),
+			unsafe.Pointer(&chat[0]),
 			uintptr(len(chat)),
 			addAssistant,
 			unsafe.Pointer(&buf[0]),
