@@ -117,7 +117,7 @@ func InitFromEnv() (Provider, error) {
 		libPath = defaultLibPath()
 	}
 
-	gpuLayers := -1 // default: let DLL decide (its default is -1 = all layers on GPU)
+	gpuLayers := -1 // default: all layers on GPU (mapped to 999 in tryLoadLocked)
 	if gpuLayersStr != "" {
 		if n, err := strconv.Atoi(gpuLayersStr); err == nil {
 			gpuLayers = n

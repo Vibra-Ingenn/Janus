@@ -21,9 +21,9 @@ Janus is a **single Go binary** that runs `.gguf` models on your machine (GPU or
 
 | Platform | What you need |
 |----------|----------------|
-| **Windows** (primary) | Windows 10/11, [Go 1.22+](https://go.dev/dl/), Vulkan-capable GPU recommended |
-| **Linux** | Go 1.22+, Vulkan or CPU |
-| **macOS** | Go 1.22+, CPU backend (Vulkan varies by hardware) |
+| **Windows** (primary) | Windows 10/11, [Go 1.25+](https://go.dev/dl/), Vulkan-capable GPU recommended |
+| **Linux** | Go 1.25+, `curl`, `tar`, Vulkan (Mesa/NVIDIA driver; check with `vulkaninfo`) or CPU |
+| **macOS** | Go 1.25+, CPU backend (Vulkan varies by hardware) |
 
 **Disk:** plan for the model size (often 2–8 GB per model) plus ~50 MB for Janus + llama.dll.
 
@@ -91,19 +91,25 @@ curl http://127.0.0.1:8990/health
 
 ---
 
-## Quick start (Linux / macOS)
+## Quick start (Linux)
 
 ```bash
 git clone https://github.com/Vibra-Ingenn/Janus.git
 cd Janus
-go mod tidy
-go build -o dist/janus ./cmd/janus
+./build.sh                      # downloads llama.cpp b11146 (Vulkan) into lib/linux, builds dist/janus
 cp .env.example .env
-# edit .env — set JANUS_MODEL_PATH and INFERENCE_BACKEND=cpu if no Vulkan
+# edit .env — set JANUS_MODEL_PATH (and INFERENCE_BACKEND=cpu if no Vulkan)
 ./dist/janus
 ```
 
-On Linux you need `libllama.so` next to the binary or on `LD_LIBRARY_PATH`.
+- `build.sh` pins llama.cpp **b11146** (the struct layouts in `internal/bridge/llama_dl.go` match that tag); `./build.sh --version bNNNN` tries another one, `--skip-download` reuses `lib/linux/`.
+- The `.so` files are copied next to the binary (`dist/`); they find each other via `RUNPATH=$ORIGIN`, no `LD_LIBRARY_PATH` needed.
+- **Go 1.25+** is required (purego v0.11 is needed to pass llama.cpp's structs by value on Linux). With `GOTOOLCHAIN=auto` (default) an older `go` downloads the right toolchain itself.
+- `JANUS_GPU_LAYERS=-1` (default) offloads every layer; check the log for `offloaded N/N layers to GPU`.
+
+Supported: linux/amd64; arm64/macOS not tested/not supported.
+
+macOS: build with `go build -o dist/janus ./cmd/janus` and provide `libllama.dylib` next to the binary (untested).
 
 ---
 

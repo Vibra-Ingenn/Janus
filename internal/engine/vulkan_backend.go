@@ -246,11 +246,13 @@ func (v *VulkanBackend) tryLoadLocked(path string, nLayers int) error {
 		return ErrLibNotFound
 	}
 
+	if nLayers < 0 {
+		nLayers = 999 // -1 = offload every layer (llama.cpp clamps to the model's layer count)
+	}
 	params := v.lib.ModelDefaultParams(nLayers)
-	paramsPtr := bridge.UnsafePtr(&params)
 
 	log.Printf("engine: loading model %q with nGPULayers=%d", path, nLayers)
-	model := v.lib.LoadModelFromFile(path, paramsPtr)
+	model := v.lib.LoadModelFromFile(path, &params)
 	runtime.KeepAlive(params)
 
 	if model == 0 {
@@ -264,9 +266,8 @@ func (v *VulkanBackend) tryLoadLocked(path string, nLayers int) error {
 	}
 	ctxParams := v.lib.ContextDefaultParams(nCtx, runtime.NumCPU())
 	log.Printf("engine: creating context: n_ctx=%d n_threads=%d n_batch=%d", ctxParams.NCtx, ctxParams.NThreads, ctxParams.NBatch)
-	ctxParamsPtr := bridge.UnsafePtr(&ctxParams)
 
-	ctx := v.lib.NewContextWithModel(model, ctxParamsPtr)
+	ctx := v.lib.NewContextWithModel(model, &ctxParams)
 	runtime.KeepAlive(ctxParams)
 
 	if ctx == 0 {
@@ -335,7 +336,7 @@ func (v *VulkanBackend) Tokenize(text string) ([]int32, error) {
 		tokTarget,
 		text,
 		int32(len(text)),
-		uintptr(unsafe.Pointer(&buf[0])),
+		unsafe.Pointer(&buf[0]),
 		maxTokens,
 		1, // add BOS
 		1, // parse special tokens (<|eot_id|>, <|im_end|>, …) as control tokens, not text
@@ -509,7 +510,7 @@ func (v *VulkanBackend) GenerateWithInfo(ctx context.Context, tokens []int32, ma
 			// Detokenize the selected token to a UTF-8 string piece.
 			n := v.lib.TokenToPiece(
 				vocabTarget, best,
-				uintptr(unsafe.Pointer(&pieceBuf[0])),
+				unsafe.Pointer(&pieceBuf[0]),
 				int32(len(pieceBuf)),
 				0, 0,
 			)
@@ -518,7 +519,7 @@ func (v *VulkanBackend) GenerateWithInfo(ctx context.Context, tokens []int32, ma
 				pieceBuf = make([]byte, -n+1)
 				n = v.lib.TokenToPiece(
 					vocabTarget, best,
-					uintptr(unsafe.Pointer(&pieceBuf[0])),
+					unsafe.Pointer(&pieceBuf[0]),
 					int32(len(pieceBuf)),
 					0, 0,
 				)
@@ -553,7 +554,7 @@ func (v *VulkanBackend) GenerateWithInfo(ctx context.Context, tokens []int32, ma
 
 			// Decode the next single token to advance the KV cache.
 			next := newBatch([]int32{best}, int32(pos), true)
-			rc = v.lib.Decode(v.rawCtx, next.ptr())
+			rc = v.lib.Decode(v.rawCtx, &next.batch)
 			runtime.KeepAlive(next)
 			if rc != 0 {
 				if bridge.IsOOMResult(rc) {
@@ -725,7 +726,7 @@ func (v *VulkanBackend) chunkedPrefill(tokens []int32) (int32, int) {
 		chunk := tokens[off:end]
 		lastChunkSize = len(chunk)
 		b := newBatch(chunk, int32(off), isLast)
-		rc := v.lib.Decode(v.rawCtx, b.ptr())
+		rc := v.lib.Decode(v.rawCtx, &b.batch)
 		runtime.KeepAlive(b)
 		if rc != 0 {
 			return rc, lastChunkSize
@@ -789,11 +790,6 @@ func newBatch(tokens []int32, startPos int32, computeLast bool) *batchState {
 		Logits:  uintptr(unsafe.Pointer(&bs.logitsB[0])),
 	}
 	return bs
-}
-
-// ptr returns the uintptr of bs.batch for passing to lib.Decode.
-func (bs *batchState) ptr() uintptr {
-	return uintptr(unsafe.Pointer(&bs.batch))
 }
 
 // sampleLogits applies a repetition penalty over recent tokens, then picks a
