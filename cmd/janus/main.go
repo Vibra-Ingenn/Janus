@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	_ "embed"
 	"encoding/json"
 	"errors"
 	"io"
@@ -215,11 +216,13 @@ func (s *server) handleRoot(w http.ResponseWriter, req *http.Request) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Write([]byte(`<!DOCTYPE html>
 <html><head><title>Janus</title><meta name="viewport" content="width=device-width,initial-scale=1">
+<link rel="icon" href="/favicon.ico">
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
 body{font-family:system-ui,-apple-system,sans-serif;background:#0f172a;color:#e2e8f0;display:flex;justify-content:center;padding:40px 16px}
 .container{max-width:640px;width:100%}
-h1{font-size:2rem;margin-bottom:8px}
+h1{font-size:2rem;margin-bottom:8px;display:flex;align-items:center;gap:12px}
+h1 img{width:88px;height:88px;margin:-20px -14px -20px -18px}
 .sub{color:#94a3b8;margin-bottom:32px}
 .card{background:#1e293b;border-radius:12px;padding:20px;margin-bottom:16px}
 .card h2{font-size:1rem;color:#38bdf8;margin-bottom:8px}
@@ -229,7 +232,7 @@ a{color:#38bdf8}
 .status{display:inline-block;padding:4px 10px;border-radius:99px;font-size:0.8rem;background:#065f46;color:#6ee7b7}
 </style></head><body>
 <div class="container">
-<h1>Janus</h1>
+<h1><img src="/favicon.ico" alt="">Janus</h1>
 <p class="sub">Local LLM server &amp; OpenAI-compatible API</p>
 <div class="card">
 <h2>Status</h2>
@@ -259,6 +262,15 @@ a{color:#38bdf8}
 API Key:  (leave blank)</pre>
 </div>
 </div></body></html>`))
+}
+
+//go:embed favicon.ico
+var faviconICO []byte
+
+func handleFavicon(w http.ResponseWriter, req *http.Request) {
+	w.Header().Set("Content-Type", "image/x-icon")
+	w.Header().Set("Cache-Control", "public, max-age=86400")
+	w.Write(faviconICO)
 }
 
 func setupLogFile() {
@@ -334,6 +346,7 @@ func main() {
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", s.handleRoot)
+	mux.HandleFunc("/favicon.ico", handleFavicon)
 	mux.HandleFunc("/health", s.handleHealth)
 	mux.HandleFunc("/engine/status", s.handleEngineStatus)
 	mux.HandleFunc("/version", s.handleVersion)
