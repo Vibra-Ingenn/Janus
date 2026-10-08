@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="assets/janus-logo.webp" alt="Janus logo" width="280">
+</p>
+
 # Janus — Local LLM Server & OpenAI-Compatible API
 
 Janus is a **single Go binary** that runs `.gguf` models on your machine (GPU or CPU) and exposes an **OpenAI-compatible API**. No Python, no Docker, no Ollama required.
