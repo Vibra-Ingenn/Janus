@@ -27,3 +27,9 @@ func TestDefaultChatPromptAllowsMedicalDocumentation(t *testing.T) {
 	}
 }
 
+// The model must not be told it is "Janus": it then introduces itself that way inside other apps.
+func TestDefaultChatPromptHasNoName(t *testing.T) {
+	if strings.Contains(strings.ToLower(DefaultRolePrompts().DefaultChat), "janus") {
+		t.Fatal("default chat prompt must not name Janus")
+	}
+}

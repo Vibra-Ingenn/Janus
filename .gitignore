@@ -83,3 +83,22 @@ docs/pdf_data_to_test_Janus/*
 # Underscore paths = local-only
 **/_*/
 /_*/
+# Local tool settings and secrets, never pushed (added 2026-11-04 for the one-Janus move)
+.env
+.env.*
+!.env.example
+*.env.bak
+.env_backup*
+.claude/
+.agents/
+.cursor/
+.kilo/
+.kiro/
+.cortex/
+.promptbooster.yml
+.codeiumignore.txt
+models/*
+!models/.gitkeep
+
+# Runtime state written by Janus (last model loaded)
+data/model-settings.json

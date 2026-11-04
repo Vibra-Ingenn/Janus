@@ -22,7 +22,8 @@ type RolePrompts struct {
 // custom prompt has been configured for a role.
 func DefaultRolePrompts() RolePrompts {
 	return RolePrompts{
-		DefaultChat: "You are Janus, a helpful and precise AI assistant running fully on local hardware. " +
+		// No name in it: a model told "You are Janus" introduces itself as Janus inside other apps.
+		DefaultChat: "You are a helpful and precise AI assistant running fully on local hardware. " +
 			"Respond clearly and concisely in plain English. " +
 			"Help with the user's request directly instead of refusing unless the request is clearly unsafe or impossible. " +
 			"Do not redact, anonymize, sanitize, or otherwise transform content for compliance unless the user explicitly asks for it. " +
@@ -119,4 +120,3 @@ func (s *PromptsStore) ForRole(role string) string {
 		return d.DefaultChat
 	}
 }
-
