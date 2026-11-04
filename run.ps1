@@ -13,15 +13,21 @@ param(
 
 $ErrorActionPreference = "Stop"
 $ProjectRoot = $PSScriptRoot
-Set-Location $ProjectRoot
+Set-Location -LiteralPath $ProjectRoot
 
-# Kill any previous instance so the .exe isn't locked during rebuild.
-$existing = Get-Process -Name "janus" -ErrorAction SilentlyContinue
-if ($existing) {
-    Write-Host "[run] stopping existing janus (PID $($existing.Id))..." -ForegroundColor Yellow
-    $existing | Stop-Process -Force
-    Start-Sleep -Milliseconds 500
-}
+# Stop only janus.exe launched from this repo tree (same port as other local installs).
+$rootNorm = $ProjectRoot.TrimEnd('\', '/')
+Get-CimInstance Win32_Process -Filter "Name='janus.exe'" -ErrorAction SilentlyContinue |
+    Where-Object {
+        $_.ExecutablePath -and
+        ($_.ExecutablePath.StartsWith($rootNorm + '\', [StringComparison]::OrdinalIgnoreCase) -or
+         $_.ExecutablePath.StartsWith($rootNorm + '/', [StringComparison]::OrdinalIgnoreCase))
+    } |
+    ForEach-Object {
+        Write-Host "[run] stopping $($_.ExecutablePath) (PID $($_.ProcessId))..." -ForegroundColor Yellow
+        Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue
+    }
+Start-Sleep -Milliseconds 400
 
 if ($Test) {
     Write-Host "[run] go test ./..." -ForegroundColor Cyan

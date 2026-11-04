@@ -1,0 +1,4 @@
+Pinned llama.cpp release tag: b12098 (build.ps1 downloads it by default).
+Tested 2026-11-04 with this pin (llama.dll 3,834,368 bytes): Llama 3.1 8B, Qwythos 9B, OmniCoder 9B (qwen35),
+Gemma 4 26B A4B and Gemma 4 12B (gemma4) all load on a 12 GB card and answer; thinking text stays out of answers.
+The Windows release zip ships this same DLL set.

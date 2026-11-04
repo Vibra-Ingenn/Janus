@@ -21,12 +21,13 @@ Thanks for your interest in contributing to Janus! We're building a high-perform
 1. Fork the repository
 2. Clone your fork: `git clone https://github.com/YOUR-USERNAME/janus.git`
 3. Create a feature branch: `git checkout -b feat/your-feature-name`
-4. Install Go 1.25+
+4. Install Go 1.21+
 
 #### Development
 1. Make your changes
 2. **On Windows, stop all running `janus.exe` before `go build`** — Go cannot overwrite a running executable; the old process keeps going (see README → Development)
-3. Add tests for new functionality
+3. Keep this repository focused on local inference and general agent tools — no offensive-security or unauthorized-testing features. Do not paste in a monolithic UI from elsewhere; maintain `webui.html` as the public core UI.
+4. Add tests for new functionality
 4. Run tests: `go test ./...`
 5. Ensure your code passes: `go vet ./...` and `go fmt ./...`
 6. Keep commit messages clear and descriptive

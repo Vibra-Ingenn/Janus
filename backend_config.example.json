@@ -1,0 +1,33 @@
+{
+  "version": "1.0",
+  "backends": [
+    {
+      "id": "local",
+      "name": "Local default (GGUF)",
+      "type": "vulkan",
+      "model_path": "",
+      "temperature": 0.7,
+      "use_case": "Private on-device chat — Janus picks the first .gguf in models\\ if this path is empty"
+    },
+    {
+      "id": "fast",
+      "name": "Fast local (optional second GGUF)",
+      "type": "vulkan",
+      "model_path": "",
+      "temperature": 0.3,
+      "use_case": "Smaller quant for quick replies — set model_path or pick in UI"
+    },
+    {
+      "id": "openrouter-free",
+      "name": "OpenRouter (cloud)",
+      "type": "openrouter",
+      "default_model": "openrouter/free",
+      "temperature": 0.2,
+      "use_case": "Uses OPENROUTER_API_KEY from .env when you pick this model in chat"
+    }
+  ],
+  "routing_rules": {
+    "default": "local"
+  },
+  "fallback_chain": ["local", "openrouter-free"]
+}

@@ -2,14 +2,13 @@ package main
 
 import (
 	"context"
-	_ "embed"
 	"encoding/json"
 	"errors"
 	"io"
 	"log"
+	"net"
 	"net/http"
 	"os"
-	"os/exec"
 	"os/signal"
 	"path/filepath"
 	"strconv"
@@ -18,15 +17,25 @@ import (
 	"syscall"
 	"time"
 
-	"janus/internal/engine"
-	"janus/internal/singleton"
+	"janus/pkg/auth"
+	"janus/pkg/config"
+	"janus/pkg/discover"
+	"janus/pkg/engine"
+	"janus/pkg/ratelimit"
+	"janus/pkg/registry"
+	"janus/pkg/reqlog"
+	"janus/pkg/settings"
+	"janus/pkg/singleton"
+
+	"janus/addons"
 
 	"github.com/joho/godotenv"
 )
 
 func init() {
 	if p := findEnvFile(); p != "" {
-		if err := godotenv.Overload(p); err != nil {
+		// Load fills gaps only — process env (e.g. JANUS_LISTEN_ADDR) wins over .env.
+		if err := godotenv.Load(p); err != nil {
 			log.Printf("failed to load %s: %v", p, err)
 		}
 	} else {
@@ -34,6 +43,8 @@ func init() {
 	}
 }
 
+// findEnvFile walks from CWD upward looking for ".env".
+// Returns the path if found, or "" if not.
 func findEnvFile() string {
 	dir, err := os.Getwd()
 	if err == nil {
@@ -49,6 +60,9 @@ func findEnvFile() string {
 			dir = parent
 		}
 	}
+
+	// Fallback: Check the directory containing the executable and its parent
+	// (e.g., if running from dist/janus.exe, it checks dist/ and the project root)
 	if exe, err := os.Executable(); err == nil {
 		exeDir := filepath.Dir(exe)
 		candidate := filepath.Join(exeDir, ".env")
@@ -61,68 +75,84 @@ func findEnvFile() string {
 			return candidate
 		}
 	}
+
 	return ""
 }
 
-type server struct {
-	provider     engine.Provider
+type router struct {
+	provider engine.Provider
+	prompts  *config.PromptsStore
+
 	mu           sync.RWMutex
+	loadMu       sync.Mutex
 	defaultModel string
 }
 
-func writeJSON(w http.ResponseWriter, status int, v any) {
-	w.Header().Set("Content-Type", "application/json")
+func new_router(provider engine.Provider, defaultModel string, prompts *config.PromptsStore) *router {
+	return &router{
+		provider:     provider,
+		prompts:      prompts,
+		defaultModel: defaultModel,
+	}
+}
+
+func write_json(w http.ResponseWriter, status int, v any) {
+	w.Header().Set("content-type", "application/json")
 	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(v)
 }
 
-func (s *server) handleHealth(w http.ResponseWriter, req *http.Request) {
-	if req.Method != http.MethodGet {
-		writeJSON(w, http.StatusMethodNotAllowed, map[string]any{"error": "method not allowed"})
-		return
+// handle_config_prompts handles GET/POST for /config/prompts.
+// GET  → returns current role prompts as JSON.
+// POST → accepts full or partial RolePrompts JSON, merges, saves to disk.
+func (r *router) handle_config_prompts(w http.ResponseWriter, req *http.Request) {
+	switch req.Method {
+	case http.MethodGet:
+		write_json(w, http.StatusOK, r.prompts.Get())
+
+	case http.MethodPost:
+		var incoming config.RolePrompts
+		if err := json.NewDecoder(req.Body).Decode(&incoming); err != nil {
+			write_json(w, http.StatusBadRequest, map[string]any{"error": "invalid json"})
+			return
+		}
+		// Merge: only overwrite fields that were explicitly provided (non-empty).
+		current := r.prompts.Get()
+		if incoming.DefaultChat != "" {
+			current.DefaultChat = incoming.DefaultChat
+		}
+		if incoming.Planner != "" {
+			current.Planner = incoming.Planner
+		}
+		if incoming.Worker != "" {
+			current.Worker = incoming.Worker
+		}
+		if incoming.Judge != "" {
+			current.Judge = incoming.Judge
+		}
+		if incoming.Pruner != "" {
+			current.Pruner = incoming.Pruner
+		}
+		if err := r.prompts.Set(current); err != nil {
+			write_json(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
+			return
+		}
+		write_json(w, http.StatusOK, map[string]any{"ok": true, "prompts": current})
+
+	default:
+		write_json(w, http.StatusMethodNotAllowed, map[string]any{"error": "method not allowed"})
 	}
-	if req.URL.Query().Get("deep") != "true" {
-		writeJSON(w, http.StatusOK, map[string]any{"ok": true})
-		return
-	}
-	checks := map[string]any{}
-	allOK := true
-	if s.provider != nil {
-		checks["inference"] = map[string]any{"status": "ok"}
-	} else {
-		checks["inference"] = map[string]any{"status": "unavailable"}
-		allOK = false
-	}
-	s.mu.RLock()
-	model := s.defaultModel
-	s.mu.RUnlock()
-	if model != "" {
-		checks["model"] = map[string]any{"status": "ok", "path": engine.DisplayModelPath(model)}
-	} else {
-		checks["model"] = map[string]any{"status": "not_configured"}
-	}
-	status := http.StatusOK
-	if !allOK {
-		status = http.StatusServiceUnavailable
-	}
-	writeJSON(w, status, map[string]any{"ok": allOK, "checks": checks})
 }
 
-func (s *server) handleEngineStatus(w http.ResponseWriter, req *http.Request) {
-	if req.Method != http.MethodGet {
-		writeJSON(w, http.StatusMethodNotAllowed, map[string]any{"error": "method not allowed"})
-		return
-	}
-	writeJSON(w, http.StatusOK, engine.GetEngineStatus(s.provider))
-}
-
-func (s *server) handleModelsLoad(w http.ResponseWriter, req *http.Request) {
+// handle_models_load hot-swaps the resident model without restarting.
+// POST /models/load  {"model_path": "./models/foo.gguf"}
+func (r *router) handle_models_load(w http.ResponseWriter, req *http.Request) {
 	if req.Method != http.MethodPost {
-		writeJSON(w, http.StatusMethodNotAllowed, map[string]any{"error": "method not allowed"})
+		write_json(w, http.StatusMethodNotAllowed, map[string]any{"error": "method not allowed"})
 		return
 	}
-	if s.provider == nil {
-		writeJSON(w, http.StatusServiceUnavailable, map[string]any{"error": "no local engine"})
+	if r.provider == nil {
+		write_json(w, http.StatusServiceUnavailable, map[string]any{"error": "no local engine — restart with INFERENCE_BACKEND=vulkan"})
 		return
 	}
 	var body struct {
@@ -131,12 +161,12 @@ func (s *server) handleModelsLoad(w http.ResponseWriter, req *http.Request) {
 		GPULayers *int   `json:"gpu_layers,omitempty"`
 	}
 	if err := json.NewDecoder(req.Body).Decode(&body); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "invalid json"})
+		write_json(w, http.StatusBadRequest, map[string]any{"error": "invalid json"})
 		return
 	}
 	path := strings.TrimSpace(body.ModelPath)
 	if path == "" {
-		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "model_path required"})
+		write_json(w, http.StatusBadRequest, map[string]any{"error": "model_path required"})
 		return
 	}
 
@@ -144,30 +174,28 @@ func (s *server) handleModelsLoad(w http.ResponseWriter, req *http.Request) {
 	if body.GPULayers != nil {
 		gpuL = *body.GPULayers
 	}
-	type loadParamConfigurer interface {
-		SetLoadParams(ctxSize uint32, gpuLayers int)
+	opts := modelSwapOptions{
+		CtxSize:   body.CtxSize,
+		GpuLayers: &gpuL,
 	}
-	if configurer, ok := s.provider.(loadParamConfigurer); ok {
-		configurer.SetLoadParams(body.CtxSize, gpuL)
-	}
-
-	displayPath := engine.DisplayModelPath(path)
-	if resolved, err := engine.ResolveModelPath(path); err == nil {
-		displayPath = engine.DisplayModelPath(resolved)
-	}
-
-	log.Printf("janus: hot-swapping model to %q", displayPath)
-	if err := s.provider.LoadModel(path); err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
+	displayPath, err := r.hotSwapLocalModel(path, opts)
+	if err != nil {
+		write_json(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
 		return
 	}
-	s.mu.Lock()
-	s.defaultModel = displayPath
-	s.mu.Unlock()
 	_ = os.Setenv("JANUS_MODEL_PATH", displayPath)
 
-	log.Printf("janus: model loaded — %q", displayPath)
-	writeJSON(w, http.StatusOK, map[string]any{
+	settings := config.ModelSettings{
+		ModelPath: displayPath,
+		CtxSize:   body.CtxSize,
+		GpuLayers: gpuL,
+		UpdatedAt: time.Now().UTC().Format(time.RFC3339),
+	}
+	if saveErr := config.SaveModelSettings(settings); saveErr != nil {
+		log.Printf("janus: could not persist model settings: %v", saveErr)
+	}
+
+	write_json(w, http.StatusOK, map[string]any{
 		"ok":         true,
 		"model_path": displayPath,
 		"ctx_size":   body.CtxSize,
@@ -175,104 +203,170 @@ func (s *server) handleModelsLoad(w http.ResponseWriter, req *http.Request) {
 	})
 }
 
-func (s *server) handleModelsList(w http.ResponseWriter, req *http.Request) {
-	if req.Method != http.MethodGet {
-		writeJSON(w, http.StatusMethodNotAllowed, map[string]any{"error": "method not allowed"})
+// handle_models_unload frees GPU/CPU memory for the resident local model.
+// POST /models/unload
+func (r *router) handle_models_unload(w http.ResponseWriter, req *http.Request) {
+	if req.Method != http.MethodPost {
+		write_json(w, http.StatusMethodNotAllowed, map[string]any{"error": "method not allowed"})
 		return
 	}
-	now := time.Now().Unix()
-
-	var models []string
-	modelsDir := "models"
-	if entries, err := os.ReadDir(modelsDir); err == nil {
-		for _, e := range entries {
-			if !e.IsDir() && strings.HasSuffix(strings.ToLower(e.Name()), ".gguf") {
-				models = append(models, filepath.Join(modelsDir, e.Name()))
-			}
-		}
+	if r.provider == nil {
+		write_json(w, http.StatusServiceUnavailable, map[string]any{"error": "no local engine — restart with INFERENCE_BACKEND=vulkan"})
+		return
 	}
-
-	s.mu.RLock()
-	current := s.defaultModel
-	s.mu.RUnlock()
-	writeJSON(w, http.StatusOK, map[string]any{
-		"current": engine.DisplayModelPath(current),
-		"models":  models,
-		"time":    now,
-	})
+	r.loadMu.Lock()
+	r.provider.Unload()
+	r.loadMu.Unlock()
+	write_json(w, http.StatusOK, map[string]any{"ok": true})
 }
 
-func (s *server) handleRoot(w http.ResponseWriter, req *http.Request) {
-	if req.URL.Path != "/" {
+func (r *router) handle_models_default(w http.ResponseWriter, req *http.Request) {
+	switch req.Method {
+	case http.MethodGet:
+		r.mu.RLock()
+		m := r.defaultModel
+		r.mu.RUnlock()
+		write_json(w, http.StatusOK, map[string]any{"model_path": m})
+
+	case http.MethodPost:
+		var body struct {
+			ModelPath string `json:"model_path"`
+			CtxSize   uint32 `json:"ctx_size,omitempty"`
+			GpuLayers *int   `json:"gpu_layers,omitempty"`
+		}
+		if err := json.NewDecoder(req.Body).Decode(&body); err != nil {
+			write_json(w, http.StatusBadRequest, map[string]any{"error": "invalid json"})
+			return
+		}
+		displayPath := engine.DisplayModelPath(strings.TrimSpace(body.ModelPath))
+		r.mu.Lock()
+		r.defaultModel = displayPath
+		r.mu.Unlock()
+		_ = os.Setenv("JANUS_MODEL_PATH", displayPath)
+
+		gpuL := -1
+		if body.GpuLayers != nil {
+			gpuL = *body.GpuLayers
+		}
+		_ = config.SaveModelSettings(config.ModelSettings{
+			ModelPath: displayPath,
+			CtxSize:   body.CtxSize,
+			GpuLayers: gpuL,
+			UpdatedAt: time.Now().UTC().Format(time.RFC3339),
+		})
+		write_json(w, http.StatusOK, map[string]any{"ok": true, "model_path": displayPath})
+
+	default:
+		write_json(w, http.StatusMethodNotAllowed, map[string]any{"error": "method not allowed"})
+	}
+}
+
+func (r *router) handle_webui(w http.ResponseWriter, req *http.Request) {
+	if req.URL.Path == "/console.js" {
+		http.ServeFile(w, req, singleton.ConsoleScriptPath())
+		return
+	}
+	if strings.HasPrefix(req.URL.Path, "/static/") {
+		rel := strings.TrimPrefix(req.URL.Path, "/static/")
+		rel = filepath.Clean(strings.ReplaceAll(rel, "\\", "/"))
+		if rel == "." || strings.HasPrefix(rel, "..") {
+			http.NotFound(w, req)
+			return
+		}
+		root := singleton.InstallRoot()
+		full := filepath.Join(root, "static", rel)
+		if !singleton.PathUnderRoot(full, filepath.Join(root, "static")) {
+			http.NotFound(w, req)
+			return
+		}
+		if _, err := os.Stat(full); err != nil {
+			http.NotFound(w, req)
+			return
+		}
+		http.ServeFile(w, req, full)
+		return
+	}
+	if req.URL.Path != "/" && req.URL.Path != "/webui.html" {
 		http.NotFound(w, req)
 		return
 	}
-	s.mu.RLock()
-	model := engine.DisplayModelPath(s.defaultModel)
-	s.mu.RUnlock()
-	if model == "" {
-		model = "(none loaded)"
+	http.ServeFile(w, req, singleton.WebUIPath())
+}
+
+func (r *router) handle_health(w http.ResponseWriter, req *http.Request) {
+	if req.Method != http.MethodGet {
+		write_json(w, http.StatusMethodNotAllowed, map[string]any{"error": "method not allowed"})
+		return
 	}
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	w.Write([]byte(`<!DOCTYPE html>
-<html><head><title>Janus</title><meta name="viewport" content="width=device-width,initial-scale=1">
-<link rel="icon" href="/favicon.ico">
-<style>
-*{margin:0;padding:0;box-sizing:border-box}
-body{font-family:system-ui,-apple-system,sans-serif;background:#0f172a;color:#e2e8f0;display:flex;justify-content:center;padding:40px 16px}
-.container{max-width:640px;width:100%}
-h1{font-size:2rem;margin-bottom:8px;display:flex;align-items:center;gap:12px}
-h1 img{width:88px;height:88px;margin:-20px -14px -20px -18px}
-.sub{color:#94a3b8;margin-bottom:32px}
-.card{background:#1e293b;border-radius:12px;padding:20px;margin-bottom:16px}
-.card h2{font-size:1rem;color:#38bdf8;margin-bottom:8px}
-code{background:#0f172a;padding:2px 6px;border-radius:4px;font-size:0.85rem}
-pre{background:#0f172a;padding:12px;border-radius:8px;overflow-x:auto;font-size:0.85rem;margin-top:8px}
-a{color:#38bdf8}
-.status{display:inline-block;padding:4px 10px;border-radius:99px;font-size:0.8rem;background:#065f46;color:#6ee7b7}
-</style></head><body>
-<div class="container">
-<h1><img src="/favicon.ico" alt="">Janus</h1>
-<p class="sub">Local LLM server &amp; OpenAI-compatible API</p>
-<div class="card">
-<h2>Status</h2>
-<p><span class="status">Running</span> &nbsp; Model: <code>` + model + `</code></p>
-</div>
-<div class="card">
-<h2>API</h2>
-<p>OpenAI-compatible endpoint:</p>
-<pre>curl http://127.0.0.1:8990/v1/chat/completions \
-  -H "Content-Type: application/json" \
-  -d '{"model":"local","messages":[{"role":"user","content":"Hello!"}]}'</pre>
-<p style="margin-top:12px">Base URL: <code>http://127.0.0.1:8990/v1</code></p>
-</div>
-<div class="card">
-<h2>Endpoints</h2>
-<p><code>GET /health</code> — liveness check</p>
-<p><code>GET /v1/models</code> — model list</p>
-<p><code>POST /v1/chat/completions</code> — chat (streaming supported)</p>
-<p><code>POST /models/load</code> — hot-swap model</p>
-<p><code>GET /engine/status</code> — VRAM and backend info</p>
-<p><code>GET /models/list</code> — available .gguf files</p>
-</div>
-<div class="card">
-<h2>Connect</h2>
-<p>Use with Cursor, Cline, or any OpenAI client:</p>
-<pre>Base URL: http://127.0.0.1:8990/v1
-API Key:  (leave blank)</pre>
-</div>
-</div></body></html>`))
+
+	// Quick check: ?deep=true returns component-level status
+	if req.URL.Query().Get("deep") != "true" {
+		write_json(w, http.StatusOK, map[string]any{
+			"ok":      true,
+			"id":      "janus",
+			"version": AppVersion,
+		})
+		return
+	}
+
+	checks := map[string]any{}
+	allOK := true
+
+	// Inference engine
+	if r.provider != nil {
+		checks["inference"] = map[string]any{"status": "ok"}
+	} else {
+		checks["inference"] = map[string]any{"status": "unavailable"}
+		allOK = false
+	}
+
+	// Memory DB removed from free Janus (archived).
+
+	// Disk: check logs dir is writable
+	if fi, err := os.Stat("logs"); err != nil || !fi.IsDir() {
+		checks["disk"] = map[string]any{"status": "warning", "detail": "logs directory missing"}
+	} else {
+		checks["disk"] = map[string]any{"status": "ok"}
+	}
+
+	// Model loaded
+	_, _, authed := auth.CurrentUser(req)
+	if r.defaultModel != "" {
+		if _, err := os.Stat(r.defaultModel); err != nil {
+			if authed {
+				checks["model_file"] = map[string]any{"status": "missing", "path": r.defaultModel}
+			} else {
+				checks["model_file"] = map[string]any{"status": "missing"}
+			}
+			allOK = false
+		} else {
+			if authed {
+				checks["model_file"] = map[string]any{"status": "ok", "path": r.defaultModel}
+			} else {
+				checks["model_file"] = map[string]any{"status": "ok"}
+			}
+		}
+	} else {
+		checks["model_file"] = map[string]any{"status": "not_configured"}
+	}
+
+	status := http.StatusOK
+	if !allOK {
+		status = http.StatusServiceUnavailable
+	}
+	write_json(w, status, map[string]any{"ok": allOK, "checks": checks})
 }
 
-//go:embed favicon.ico
-var faviconICO []byte
-
-func handleFavicon(w http.ResponseWriter, req *http.Request) {
-	w.Header().Set("Content-Type", "image/x-icon")
-	w.Header().Set("Cache-Control", "public, max-age=86400")
-	w.Write(faviconICO)
+func (r *router) handle_engine_status(w http.ResponseWriter, req *http.Request) {
+	if req.Method != http.MethodGet {
+		write_json(w, http.StatusMethodNotAllowed, map[string]any{"error": "method not allowed"})
+		return
+	}
+	write_json(w, http.StatusOK, engine.GetEngineStatus(r.provider))
 }
 
+// setupLogFile tees all log output to both stdout and logs/janus.log.
+// The log file is appended to on each run so history is preserved.
 func setupLogFile() {
 	if err := os.MkdirAll("logs", 0o755); err != nil {
 		log.Printf("janus: cannot create logs/ dir: %v", err)
@@ -288,87 +382,120 @@ func setupLogFile() {
 	log.Printf("janus: logging to logs/janus.log")
 }
 
-func openBrowser(url string) {
-	time.Sleep(600 * time.Millisecond)
-	if err := exec.Command("cmd", "/c", "start", url).Start(); err != nil {
-		log.Printf("janus: could not open browser: %v", err)
+// openBrowser opens url after the server is ready (see main).
+func openBrowserAfterBind(listenAddr string) {
+	if !shouldOpenBrowser() {
+		return
 	}
-}
-
-func listenAddr() string {
-	addr := strings.TrimSpace(os.Getenv("JANUS_LISTEN_ADDR"))
-	if addr == "" {
-		return "127.0.0.1:8990"
+	url := consoleURL(listenAddr)
+	if !singleton.WaitUntilJanusHealth(singleton.BrowserBaseURL(listenAddr), 15*time.Second) {
+		log.Printf("janus: server did not become ready in time; still opening browser at %s", url)
 	}
-	if !strings.Contains(addr, ":") {
-		return "127.0.0.1:" + addr
-	}
-	return addr
+	openBrowserAt(url)
 }
 
 func main() {
 	setupLogFile()
+	if sf, err := settings.Load(); err == nil {
+		sf.Apply()
+	} else {
+		log.Printf("janus: settings: %v", err)
+	}
+	if created := discover.EnsureBackendConfigFile(); created != "" {
+		log.Printf("janus: created %s from backend_config.example.json — add backends / routing there", created)
+	}
+	init_backend_config()
+	auth.Init("data")
 
-	addr := listenAddr()
-	if err := singleton.Ensure(addr); err != nil {
-		log.Fatalf("janus: refusing to start — %v", err)
+	// Port conflict: open console to existing Janus or explain blocker (no bind error).
+	listenAddr := janus_listen_addr()
+	if !handlePortBeforeStart(listenAddr) {
+		os.Exit(0)
 	}
 
-	reqBackend := strings.ToLower(strings.TrimSpace(os.Getenv("INFERENCE_BACKEND")))
-	wantsLocal := reqBackend == "" || reqBackend == "vulkan" || reqBackend == "cpu"
-
-	modelPath := strings.TrimSpace(os.Getenv("JANUS_MODEL_PATH"))
-	if gpuStr := strings.TrimSpace(os.Getenv("JANUS_GPU_LAYERS")); gpuStr != "" {
-		if _, err := strconv.Atoi(gpuStr); err != nil {
-			log.Printf("janus: invalid JANUS_GPU_LAYERS=%q, using default", gpuStr)
-		}
+	// Requested inference backend. Empty defaults to the local Vulkan engine.
+	persisted := config.LoadModelSettings()
+	if persisted.ModelPath != "" {
+		_ = os.Setenv("JANUS_MODEL_PATH", persisted.ModelPath)
+		log.Printf("janus: persisted model override: %q", persisted.ModelPath)
+	}
+	if persisted.CtxSize > 0 {
+		_ = os.Setenv("JANUS_CTX_SIZE", strconv.FormatUint(uint64(persisted.CtxSize), 10))
+	}
+	if persisted.ModelPath != "" {
+		_ = os.Setenv("JANUS_GPU_LAYERS", strconv.Itoa(persisted.GpuLayers))
 	}
 
-	backend, err := engine.InitFromEnv()
-	if err != nil {
-		if wantsLocal {
-			log.Fatalf("janus: local engine (%s) failed to start: %v\n"+
-				"    Fix the model path / VRAM / GPU layers, or set INFERENCE_BACKEND=ollama to use Ollama.", reqBackend, err)
-		}
-		log.Printf("janus: local engine unavailable (%v)", err)
-	} else if backend != nil {
-		log.Printf("janus: local engine ready [%s]", backend.Backend())
+	backend, err := startInferenceEngine()
+	reqBackend := normalizedInferenceBackend()
+	logInferenceStartup(reqBackend, backend, err)
+	if backend != nil {
 		defer backend.Unload()
-	} else if wantsLocal {
-		log.Fatalf("janus: INFERENCE_BACKEND=%s requested but no local engine was created — check JANUS_MODEL_PATH", reqBackend)
 	}
 
-	defaultModel := modelPath
-	s := &server{
-		provider:     backend,
-		defaultModel: defaultModel,
+	prompts, _ := config.OpenPrompts("")
+	defaultModel := strings.TrimSpace(os.Getenv("JANUS_MODEL_PATH"))
+	if persisted.ModelPath != "" {
+		defaultModel = persisted.ModelPath
 	}
+
+	r := new_router(backend, defaultModel, prompts)
+
+	chatRL := ratelimit.New(10, 20) // 10 req/s, burst 20
 
 	mux := http.NewServeMux()
-	mux.HandleFunc("/", s.handleRoot)
-	mux.HandleFunc("/favicon.ico", handleFavicon)
-	mux.HandleFunc("/health", s.handleHealth)
-	mux.HandleFunc("/engine/status", s.handleEngineStatus)
-	mux.HandleFunc("/version", s.handleVersion)
-	mux.HandleFunc("/v1/models", s.handleV1Models)
-	mux.HandleFunc("/v1/chat/completions", s.handleV1ChatCompletions)
-	mux.HandleFunc("/models/list", s.handleModelsList)
-	mux.HandleFunc("/models/load", s.handleModelsLoad)
+	mux.HandleFunc("/", r.handle_webui)
+	mux.HandleFunc("/health", r.handle_health)
+	mux.HandleFunc("/tool.json", r.handle_tool_json)
+	mux.HandleFunc("/config/addons/sidebar", auth.Middleware(auth.RoleReadonly, r.handle_addons_sidebar))
+	addons.MountAll(mux)
+	mux.HandleFunc("/engine/status", auth.Middleware(auth.RoleReadonly, r.handle_engine_status))
+	mux.HandleFunc("/version", r.handle_version)
+	mux.HandleFunc("/instance", singleton.HandleInstance)
+	mux.HandleFunc("/instance/shutdown", singleton.HandleShutdown)
+	mux.HandleFunc("/v1/models", auth.Middleware(auth.RoleReadonly, r.handle_v1_models))
+	mux.HandleFunc("/v1/chat/completions", chatRL.Middleware(r.handle_v1_chat_completions))
 
+	mux.HandleFunc("/models/list", auth.Middleware(auth.RoleReadonly, r.handle_models_list))
+	mux.HandleFunc("/models/default", auth.Middleware(auth.RoleAdmin, r.handle_models_default))
+	mux.HandleFunc("/models/load", auth.Middleware(auth.RoleAdmin, r.handle_models_load))
+	mux.HandleFunc("/models/unload", auth.Middleware(auth.RoleAdmin, r.handle_models_unload))
+	mux.HandleFunc("/models/search", auth.Middleware(auth.RoleReadonly, r.handle_models_search))
+	mux.HandleFunc("/models/files", auth.Middleware(auth.RoleReadonly, r.handle_models_files))
+	mux.HandleFunc("/models/download", auth.Middleware(auth.RoleAdmin, r.handle_models_download))
+	mux.HandleFunc("/models/downloads", auth.Middleware(auth.RoleAdmin, r.handle_models_downloads))
+	mux.HandleFunc("/config/prompts", auth.Middleware(auth.RoleAdmin, r.handle_config_prompts))
+	mux.HandleFunc("/config/mode", auth.Middleware(auth.RoleAdmin, r.handle_config_mode))
+	mux.HandleFunc("/config/features", auth.Middleware(auth.RoleReadonly, r.handle_config_features))
+	mux.HandleFunc("/config/connectors", r.handle_config_connectors)
+	mux.HandleFunc("/config/settings", auth.Middleware(auth.RoleAdmin, r.handle_config_settings))
+	mux.HandleFunc("/config/backends/reload", auth.Middleware(auth.RoleAdmin, r.handle_config_backends_reload))
+	mux.HandleFunc("/config/peers", auth.Middleware(auth.RoleReadonly, r.handle_config_peers))
+	mux.HandleFunc("/config/request-log", auth.Middleware(auth.RoleReadonly, r.handle_request_log))
+	mux.HandleFunc("/config/model-folders", auth.Middleware(auth.RoleAdmin, r.handle_config_model_folders))
+	mux.HandleFunc("/models/scan-pc", auth.Middleware(auth.RoleAdmin, r.handle_models_scan_pc))
+
+	mux.HandleFunc("/auth/me", auth.HandleMe)
+
+	addr := listenAddr
 	srv := &http.Server{
 		Addr:              addr,
-		Handler:           mux,
+		Handler:           reqlog.Middleware(mux),
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 
 	errc := make(chan error, 1)
+	ln, err := net.Listen("tcp", addr)
+	if err != nil {
+		log.Fatalf("janus: listen %s: %v", addr, err)
+	}
 	go func() {
 		log.Printf("janus v%s listening on %s", AppVersion, addr)
+		register_tool_registry(addr)
 		go checkForUpdates()
-		if strings.TrimSpace(os.Getenv("JANUS_NO_BROWSER")) == "" {
-			go openBrowser("http://" + addr)
-		}
-		errc <- srv.ListenAndServe()
+		firstRunPCScan()
+		go openBrowserAfterBind(addr)
+		errc <- srv.Serve(ln)
 	}()
 
 	sigc := make(chan os.Signal, 1)
@@ -380,6 +507,7 @@ func main() {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
 		_ = srv.Shutdown(ctx)
+		registry.Unregister("janus")
 		log.Printf("janus: shutdown complete")
 		os.Exit(0)
 	case err := <-errc:
@@ -388,4 +516,29 @@ func main() {
 		}
 		os.Exit(0)
 	}
+}
+
+func bind_lan_enabled() bool {
+	v := strings.ToLower(strings.TrimSpace(os.Getenv("JANUS_BIND_LAN")))
+	return v == "1" || v == "true" || v == "yes"
+}
+
+func janus_listen_addr() string {
+	addr := strings.TrimSpace(os.Getenv("JANUS_LISTEN_ADDR"))
+	if addr == "" {
+		addr = "127.0.0.1:8990"
+	}
+	if !strings.Contains(addr, ":") {
+		addr = "127.0.0.1:" + addr
+	}
+	host, port, err := net.SplitHostPort(addr)
+	if err != nil || port == "" {
+		return "127.0.0.1:8990"
+	}
+	if bind_lan_enabled() {
+		host = "0.0.0.0"
+	} else if host == "" || host == "0.0.0.0" {
+		host = "127.0.0.1"
+	}
+	return net.JoinHostPort(host, port)
 }

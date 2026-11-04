@@ -1,0 +1,389 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Janus Console</title>
+<style>
+  :root {
+    /* Colours: Linear's dark theme (linear.app, read 2026-11-02). */
+    --bg: #08090a;
+    --bg-2: #0f1011;
+    --bg-3: #141516;
+    --bg-hover: #1c1c1f;
+    --line: #23252a;
+    --line-2: #34343a;
+    --text: #f7f8f8;
+    --text-2: #8a8f98;
+    --text-3: #62666d;
+    --accent: #7170ff;
+    --accent-soft: rgba(113,112,255,0.14);
+    --ok: #27a644;
+    --warn: #f0bf00;
+    --bad: #eb5757;
+    --mono: ui-monospace, "JetBrains Mono", "Cascadia Code", Consolas, monospace;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; overflow-x: hidden; max-width: 100vw; }
+  @font-face {
+    font-family: "Inter Variable";
+    font-style: normal;
+    font-weight: 100 900;
+    font-display: swap;
+    src: url("/static/fonts/InterVariable.woff2") format("woff2");
+  }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font: 13px/1.5 "Inter Variable", Inter, "Segoe UI Variable", "Segoe UI", system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    letter-spacing: -0.005em;
+  }
+  .app { display: grid; grid-template-columns: 220px 1fr; grid-template-rows: 48px 1fr; height: 100vh; }
+
+  /* Top bar */
+  .top { grid-column: 1 / -1; display: flex; align-items: center; gap: 16px; padding: 0 16px;
+         border-bottom: 1px solid var(--line); background: var(--bg); }
+  .brand { display: flex; align-items: center; gap: 10px; width: 188px; font-weight: 600; font-size: 14px; }
+  .mark { width: 22px; height: 22px; border-radius: 6px; display: grid; place-items: center;
+          background: linear-gradient(135deg, #2a2d3a, #15161b); border: 1px solid var(--line-2); }
+  .mark svg { width: 13px; height: 13px; }
+  .model-pill { display: flex; align-items: center; gap: 12px; height: 32px; padding: 0 12px;
+                border: 1px solid var(--line-2); border-radius: 8px; background: var(--bg-2); cursor: pointer; }
+  .model-pill:hover { background: var(--bg-hover); }
+  .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--ok); box-shadow: 0 0 0 3px rgba(39,166,68,0.18); }
+  .model-name { font-weight: 500; }
+  .sep { width: 1px; height: 14px; background: var(--line-2); }
+  .meta { color: var(--text-2); font-family: var(--mono); font-size: 12px; }
+  .vram { display: flex; align-items: center; gap: 8px; }
+  .bar { width: 90px; height: 4px; border-radius: 2px; background: var(--line-2); overflow: hidden; }
+  .bar > i { display: block; height: 100%; background: var(--text-2); }
+  .top-right { margin-left: auto; display: flex; align-items: center; gap: 14px; color: var(--text-2); font-size: 12px; }
+  .endpoint { font-family: var(--mono); padding: 4px 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--bg-2); }
+
+  /* Sidebar */
+  .side { border-right: 1px solid var(--line); padding: 12px 8px; display: flex; flex-direction: column; gap: 2px; background: var(--bg); }
+  .nav { display: flex; align-items: center; gap: 10px; height: 30px; padding: 0 10px; border-radius: 6px;
+         color: var(--text-2); cursor: pointer; user-select: none; }
+  .nav svg { width: 15px; height: 15px; stroke: currentColor; fill: none; stroke-width: 1.6; }
+  .nav:hover { background: var(--bg-hover); color: var(--text); }
+  .nav.on { background: var(--bg-3); color: var(--text); }
+  .nav .count { margin-left: auto; font-family: var(--mono); font-size: 11px; color: var(--text-3); }
+  .side-foot { margin-top: auto; padding: 10px; color: var(--text-3); font-size: 11px; line-height: 1.6; }
+
+  /* Main */
+  main { overflow: auto; }
+  .page { display: none; padding: 24px 28px 40px; max-width: 1180px; }
+  .page.on { display: block; }
+  .head { display: flex; align-items: flex-end; gap: 12px; margin-bottom: 18px; }
+  h1 { font-size: 18px; font-weight: 600; letter-spacing: -0.015em; }
+  .sub { color: var(--text-2); margin-top: 2px; }
+  .head .actions { margin-left: auto; display: flex; gap: 8px; }
+  .btn { height: 30px; padding: 0 12px; border-radius: 7px; border: 1px solid var(--line-2); background: var(--bg-2);
+         color: var(--text); font: inherit; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; }
+  .btn:hover { background: var(--bg-hover); }
+  .btn.primary { background: var(--accent); border-color: transparent; color: #fff; }
+  .btn.primary:hover { filter: brightness(1.1); }
+  .btn.ghost { background: transparent; border-color: transparent; color: var(--text-2); }
+  .btn.ghost:hover { color: var(--text); background: var(--bg-hover); }
+  .btn.sm { height: 26px; padding: 0 10px; font-size: 12px; }
+  .input { height: 30px; padding: 0 10px; border-radius: 7px; border: 1px solid var(--line-2); background: var(--bg-2);
+           color: var(--text); font: inherit; outline: none; }
+  .input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+
+  /* Stats row */
+  .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1px; background: var(--line);
+           border: 1px solid var(--line); border-radius: 10px; overflow: hidden; margin-bottom: 20px; }
+  .stat { background: var(--bg-2); padding: 14px 16px; }
+  .stat .k { color: var(--text-3); font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; }
+  .stat .v { font-size: 20px; font-weight: 600; margin-top: 4px; font-family: var(--mono); letter-spacing: -0.02em; }
+  .stat .v small { font-size: 12px; color: var(--text-2); font-weight: 400; }
+
+  /* Tables */
+  .panel { border: 1px solid var(--line); border-radius: 10px; background: var(--bg-2); overflow: hidden; }
+  .panel-head { display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-bottom: 1px solid var(--line); }
+  .panel-head .title { font-weight: 500; }
+  .panel-head .hint { color: var(--text-3); font-size: 12px; }
+  .panel-head .right { margin-left: auto; display: flex; gap: 8px; }
+  table { width: 100%; border-collapse: collapse; }
+  th { text-align: left; font-weight: 500; color: var(--text-3); font-size: 11px; text-transform: uppercase;
+       letter-spacing: 0.06em; padding: 8px 14px; border-bottom: 1px solid var(--line); }
+  td { padding: 10px 14px; border-bottom: 1px solid var(--line); vertical-align: middle; }
+  tr:last-child td { border-bottom: none; }
+  tbody tr:hover td { background: rgba(255,255,255,0.015); }
+  .mono { font-family: var(--mono); font-size: 12px; color: var(--text-2); }
+  .name { font-weight: 500; }
+  .path { color: var(--text-3); font-size: 11.5px; font-family: var(--mono); }
+  .tag { display: inline-flex; align-items: center; gap: 6px; height: 20px; padding: 0 8px; border-radius: 10px;
+         font-size: 11.5px; border: 1px solid var(--line-2); color: var(--text-2); }
+  .tag i { width: 6px; height: 6px; border-radius: 50%; }
+  .tag.ok i { background: var(--ok); } .tag.warn i { background: var(--warn); } .tag.bad i { background: var(--bad); }
+  .tag.live { border-color: rgba(39,166,68,0.4); color: var(--ok); }
+  .row-actions { display: flex; gap: 6px; justify-content: flex-end; }
+
+  /* Layout helpers */
+  .grid2 { display: grid; grid-template-columns: 1.3fr 1fr; gap: 16px; }
+  .stack { display: flex; flex-direction: column; gap: 16px; }
+  .field { display: grid; grid-template-columns: 220px 1fr; gap: 16px; padding: 14px 16px; border-bottom: 1px solid var(--line); align-items: center; }
+  .field:last-child { border-bottom: none; }
+  .field .lab { font-weight: 500; }
+  .field .help { color: var(--text-3); font-size: 12px; margin-top: 2px; font-weight: 400; }
+  .ctl { display: flex; align-items: center; gap: 10px; }
+  input[type=range] { -webkit-appearance: none; appearance: none; width: 220px; height: 4px; border-radius: 2px; background: var(--line-2); outline: none; }
+  input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 14px; height: 14px; border-radius: 50%; background: var(--text); border: 3px solid var(--bg-2); box-shadow: 0 0 0 1px var(--line-2); cursor: pointer; }
+  .val { font-family: var(--mono); font-size: 12px; color: var(--text); min-width: 64px; }
+  .switch { width: 30px; height: 18px; border-radius: 9px; background: var(--line-2); position: relative; cursor: pointer; flex: none; }
+  .switch::after { content: ""; position: absolute; top: 2px; left: 2px; width: 14px; height: 14px; border-radius: 50%; background: var(--text-2); transition: .15s; }
+  .switch.on { background: var(--accent); }
+  .switch.on::after { left: 14px; background: #fff; }
+  select.input { padding-right: 28px; }
+  .note { color: var(--text-3); font-size: 12px; }
+  .warnline { color: var(--warn); font-size: 12px; }
+
+  /* Code + log */
+  .code { font-family: var(--mono); font-size: 12px; background: var(--bg); border: 1px solid var(--line);
+          border-radius: 8px; padding: 12px 14px; color: var(--text-2); white-space: pre; overflow-x: auto; }
+  .code b { color: var(--text); font-weight: 500; }
+  .tabs { display: flex; gap: 2px; padding: 8px 10px 0; border-bottom: 1px solid var(--line); }
+  .tab { padding: 6px 10px; color: var(--text-2); cursor: pointer; border-bottom: 2px solid transparent; margin-bottom: -1px; }
+  .tab.on { color: var(--text); border-color: var(--accent); }
+  .log td { padding: 7px 14px; font-family: var(--mono); font-size: 12px; color: var(--text-2); }
+  .log td.c { color: var(--text); }
+  .progress { height: 4px; border-radius: 2px; background: var(--line-2); overflow: hidden; width: 140px; }
+  .progress i { display: block; height: 100%; background: var(--accent); }
+  .reply { border: 1px solid var(--line); border-radius: 8px; padding: 14px; background: var(--bg); color: var(--text); min-height: 80px; }
+  .kv { display: flex; gap: 18px; margin-top: 10px; }
+  .kv div { color: var(--text-3); font-size: 12px; } .kv b { color: var(--text); font-family: var(--mono); font-weight: 500; margin-left: 6px; }
+  .section-title { color: var(--text-3); font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; margin: 22px 0 8px; }
+
+  @media (max-width: 800px) {
+    .app { grid-template-columns: 1fr; grid-template-rows: 48px auto 1fr; }
+    .side { flex-direction: row; overflow-x: auto; border-right: none; border-bottom: 1px solid var(--line); padding: 6px; }
+    .side-foot, .brand span, .top-right .endpoint, .vram { display: none; }
+    .brand { width: auto; }
+    .page { padding: 16px; }
+    .stats { grid-template-columns: repeat(2, 1fr); }
+    .grid2 { grid-template-columns: 1fr; }
+    .field { grid-template-columns: 1fr; }
+    .hide-sm { display: none; }
+    .head { flex-direction: column; align-items: stretch; }
+    .head .actions { margin-left: 0; flex-wrap: wrap; }
+    .head .actions .input { flex: 1 1 100%; width: auto !important; }
+    .model-pill { min-width: 0; flex: 1; }
+    .model-pill .meta, .model-pill .sep { display: none; }
+    .model-name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .top-right .tag { white-space: nowrap; }
+    .panel { overflow-x: auto; }
+    .ctl { flex-wrap: wrap; }
+    input[type=range] { width: 100%; max-width: 260px; }
+    .nav { flex: none; white-space: nowrap; }
+    .nav .count { display: none; }
+  }
+</style>
+</head>
+<body>
+<div class="app">
+
+  <header class="top">
+    <div class="brand">
+      <div class="mark"><svg viewBox="0 0 16 16" fill="none" stroke="#f4f5f5" stroke-width="1.6"><path d="M8 2v12M3 5c0 4 2 6 5 6M13 5c0 4-2 6-5 6"/></svg></div>
+      <span>Janus</span>
+    </div>
+    <div class="model-pill" onclick="go('models')" title="Switch model">
+      <span class="dot"></span>
+      <span class="model-name">No model loaded</span>
+      <span class="meta">—</span>
+      <span class="sep"></span>
+      <span class="meta">GPU · Vulkan</span>
+      <span class="sep"></span>
+      <span class="vram"><span class="meta">VRAM 5.9 / 12.0 GB</span><span class="bar"><i style="width:49%"></i></span></span>
+      <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="#8b8f98" stroke-width="1.8"><path d="M4 6l4 4 4-4"/></svg>
+    </div>
+    <div class="top-right">
+      <span><span class="tag live"><i style="background:var(--ok)"></i>Server running</span></span>
+      <span class="endpoint">127.0.0.1:8990/v1</span>
+    </div>
+  </header>
+
+  <nav class="side">
+    <div class="nav on" data-p="models" onclick="go('models')"><svg viewBox="0 0 16 16"><rect x="2" y="2.5" width="12" height="4" rx="1"/><rect x="2" y="9.5" width="12" height="4" rx="1"/></svg>My Models<span class="count"></span></div>
+    <div class="nav" data-p="discover" onclick="go('discover')"><svg viewBox="0 0 16 16"><circle cx="7" cy="7" r="4.5"/><path d="M10.5 10.5L14 14"/></svg>Discover</div>
+    <div class="nav" data-p="server" onclick="go('server')"><svg viewBox="0 0 16 16"><path d="M2 8h3l2-4 2 8 2-4h3"/></svg>Server<span class="count"></span></div>
+    <div class="nav" data-p="test" onclick="go('test')"><svg viewBox="0 0 16 16"><path d="M5 2h6M6 2v4L3 13a1 1 0 001 1.5h8A1 1 0 0013 13L10 6V2"/></svg>Test</div>
+    <div class="nav" data-p="settings" onclick="go('settings')"><svg viewBox="0 0 16 16"><circle cx="8" cy="8" r="2.2"/><path d="M8 1.5v2M8 12.5v2M1.5 8h2M12.5 8h2M3.4 3.4l1.4 1.4M11.2 11.2l1.4 1.4M3.4 12.6l1.4-1.4M11.2 4.8l1.4-1.4"/></svg>Settings</div>
+    <div class="section-title" style="margin:12px 8px 4px">Tools</div>
+    <div id="tools-list"></div>
+    <div class="side-foot">Janus console</div>
+  </nav>
+
+  <main>
+
+    <!-- MY MODELS -->
+    <section class="page on" id="p-models">
+      <div class="head">
+        <div><h1>My Models</h1><div class="sub">Every model file found on this PC. Load one and any app can use it.</div></div>
+        <div class="actions">
+          <input class="input" placeholder="Filter models" style="width:200px">
+          <button class="btn" id="models-scan-pc">Scan this PC</button>
+          <button class="btn" id="models-add-folder">Add a folder</button>
+          <button class="btn primary" onclick="go('discover')">Get more models</button>
+        </div>
+      </div>
+
+      <div class="stats">
+        <div class="stat"><div class="k">Loaded</div><div class="v" id="stat-loaded">—</div></div>
+        <div class="stat"><div class="k">Found on this PC</div><div class="v" id="stat-found">—</div></div>
+        <div class="stat"><div class="k">Graphics memory</div><div class="v" id="stat-vram">—</div></div>
+        <div class="stat"><div class="k">Requests (this session)</div><div class="v" id="stat-requests">—</div></div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-head"><span class="title">Models</span><span class="hint" id="scan-status"></span></div>
+        <table>
+          <thead><tr><th>Model</th><th class="hide-sm">Size</th><th>Fits this PC</th><th></th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- DISCOVER -->
+    <section class="page" id="p-discover">
+      <div class="head">
+        <div><h1>Discover</h1><div class="sub">Search Hugging Face for models. Janus marks which files fit this PC.</div></div>
+      </div>
+      <div style="display:flex;gap:8px;margin-bottom:16px">
+        <input class="input" id="hub-q" placeholder="Search models, e.g. qwen, llama, gemma" style="flex:1">
+        <select class="input" id="hub-sort"><option value="downloads">Most downloaded</option><option value="newest">Newest</option><option value="likes">Most liked</option></select>
+        <button class="btn primary" id="hub-search">Search</button>
+      </div>
+      <div class="grid2">
+        <div class="panel">
+          <div class="panel-head"><span class="title">Results</span><span class="hint" id="hub-count"></span></div>
+          <table><tbody id="hub-repos"><tr><td class="note">Type a model name and press Search.</td></tr></tbody></table>
+        </div>
+        <div class="panel">
+          <div class="panel-head"><span class="title" id="hub-repo-title">Files</span><span class="hint" id="hub-vram"></span></div>
+          <table>
+            <thead><tr><th>File</th><th>Size</th><th>Fits</th><th></th></tr></thead>
+            <tbody id="hub-files"><tr><td colspan="4" class="note">Pick a result to see its files.</td></tr></tbody>
+          </table>
+          <div style="padding:12px 14px;border-top:1px solid var(--line)">
+            <div class="section-title" style="margin-top:0">Downloads</div>
+            <div id="hub-downloads"><div class="note">Nothing downloading.</div></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- SERVER -->
+    <section class="page" id="p-server">
+      <div class="head">
+        <div><h1>Server</h1><div class="sub">Point any app at this address. It works like the OpenAI API, but runs on your PC.</div></div>
+              </div>
+      <p class="note" style="margin-bottom:16px">To stop Janus, close its window (closing the tab keeps it running for your apps).</p>
+      <div class="grid2">
+        <div class="stack">
+          <div class="panel">
+            <div class="panel-head"><span class="title">Connect your app</span></div>
+            <div class="field"><div class="lab">Address</div><div class="ctl"><span class="code" style="padding:6px 10px;flex:1">http://127.0.0.1:8990/v1</span><button class="btn sm">Copy</button></div></div>
+            <div class="field"><div class="lab">Model id<div class="help">What your app sends as "model"</div></div><div class="ctl"><span class="code" style="padding:6px 10px;flex:1">local</span><button class="btn sm">Copy</button></div></div>
+            <div class="field"><div class="lab">API key<div class="help">Any text works unless you set a password</div></div><div class="ctl"><span class="mono">not needed</span></div></div>
+          </div>
+          <div class="panel">
+            <div class="tabs" id="snip-tabs"><div class="tab on" data-snip="python">Python</div><div class="tab" data-snip="curl">curl</div><div class="tab" data-snip="vscode">VS Code</div><div class="tab" data-snip="openwebui">Open WebUI</div><div class="tab" data-snip="vibe">Vibe Engine</div></div>
+            <div style="padding:12px"><div class="note" id="snip-note" style="margin-bottom:8px"></div><div class="code" id="snip-code" style="white-space:pre;overflow-x:auto"></div><div style="margin-top:8px"><button class="btn sm" id="snip-copy">Copy</button></div></div>
+          </div>
+        </div>
+        <div class="stack">
+          <div class="panel">
+            <div class="field"><div class="lab">Port<div class="help">Applies on next restart</div></div><div class="ctl"><input class="input" id="set-port" value="8990" style="width:90px"></div></div>
+            <div class="field"><div class="lab">Share on my home network<div class="help">Other PCs at home can use these models (next restart)</div></div><div class="ctl"><div class="switch" id="set-bind-lan"></div><span class="warnline">Off by default — only turn on if you trust your home network.</span></div></div>
+            <div class="field"><div class="lab">Require a password<div class="help">Uses one admin password (next restart)</div></div><div class="ctl"><div class="switch" id="set-auth"></div><input class="input" id="set-auth-password" type="password" placeholder="Admin password" style="width:200px;display:none"></div></div>
+          </div>
+        </div>
+      </div>
+      <div class="panel" style="margin-top:16px">
+        <div class="panel-head"><span class="title">Live requests</span><span class="tag live"><i style="background:var(--ok)"></i>live</span><span class="right"><button class="btn ghost sm" id="log-clear">Clear</button></span></div>
+        <table class="log">
+          <thead><tr><th>Time</th><th>App</th><th>Model</th><th class="hide-sm">Tokens</th><th>Speed</th><th>Result</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- TEST -->
+    <section class="page" id="p-test">
+      <div class="head"><div><h1>Test</h1><div class="sub">Send one prompt to check a setting worked. Real use happens in your own apps.</div></div></div>
+      <div class="panel" style="padding:16px">
+        <div style="display:flex;gap:8px">
+          <input class="input" placeholder="Say hello in five words." value="Say hello in five words." style="flex:1">
+          <button class="btn primary">Send test</button>
+        </div>
+        <div class="section-title">Reply</div>
+        <div class="reply note">Press Send test to check the loaded model answers.</div>
+        <div class="kv"></div>
+      </div>
+    </section>
+
+    <!-- SETTINGS -->
+    <section class="page" id="p-settings">
+      <div class="head">
+        <div><h1>Settings</h1><div class="sub">Everything Janus can do. Saved on this PC. No files to edit.</div></div>
+        <div class="actions"><button class="btn" id="reload-model">Reload model</button></div>
+      </div>
+
+      <div class="section-title">Loading</div>
+      <div class="panel">
+        <div class="field"><div class="lab">Load at start-up<div class="help">Which model Janus loads when it starts</div></div><div class="ctl"><select class="input" id="set-defer-load" style="width:280px"><option value="0">Last used</option><option value="1">None — wait for an app</option></select><span class="note">applies on next restart</span></div></div>
+        <div class="field"><div class="lab">Run on<div class="help">Graphics card is much faster</div></div><div class="ctl"><select class="input" id="set-backend" style="width:280px"><option value="vulkan">Graphics card (Vulkan)</option><option value="cpu">CPU only</option><option value="ollama">Ollama</option></select><span class="note">applies on next restart</span></div></div>
+        <div class="field"><div class="lab">Layers on the graphics card<div class="help">More = faster; fewer = less graphics memory</div></div><div class="ctl"><input type="range" id="set-gpu-layers" min="-1" max="99" value="99"><span class="val" id="set-gpu-layers-val">all</span><span class="note">applies on next load</span></div></div>
+        <div class="field"><div class="lab">Graphics memory budget</div><div class="ctl"><input type="range" id="set-vram-ceiling" min="2048" max="24576" step="256" value="12083"><span class="val" id="set-vram-ceiling-val">11.8 GB</span><span class="note">live for discovery</span></div></div>
+        <div class="field"><div class="lab">Context length<div class="help">How much text the model sees at once</div></div><div class="ctl"><input type="range" id="set-ctx" min="0" max="6" value="2"><span class="val" id="set-ctx-val">8,192</span><span class="note">applies on next load</span></div></div>
+        <div class="field"><div class="lab">Chat template</div><div class="ctl"><select class="input" id="set-prompt-format" style="width:200px"><option value="">Auto (from the model)</option><option value="chatml">ChatML</option><option value="llama2">Llama 2</option><option value="alpaca">Alpaca</option></select><span class="note">live</span></div></div>
+        <div class="field"><div class="lab">Show thinking<div class="help">For models that think before answering</div></div><div class="ctl"><div class="switch" id="set-think"></div><span class="note">live</span></div></div>
+      </div>
+
+      <div class="section-title">Answers (defaults; apps can override)</div>
+      <div class="panel">
+        <div class="field"><div class="lab">Max reply length</div><div class="ctl"><input type="range" id="set-max-tokens" min="0" max="7" value="4"><span class="val" id="set-max-tokens-val">4,096 tokens</span><span class="note">live default</span></div></div>
+        <div class="field"><div class="lab">Repeat penalty</div><div class="ctl"><input type="range" id="set-repeat-penalty" min="100" max="150" value="110"><span class="val" id="set-repeat-penalty-val">1.10</span><span class="note">live</span></div></div>
+        <div class="field"><div class="lab">Repeat window</div><div class="ctl"><input type="range" id="set-repeat-last-n" min="0" max="512" value="64"><span class="val" id="set-repeat-last-n-val">64 tokens</span><span class="note">live</span></div></div>
+      </div>
+
+      <div class="section-title">Model folders</div>
+      <div class="panel">
+        <table><thead><tr><th>Folder</th><th>Models</th><th></th></tr></thead><tbody id="model-folders"></tbody></table>
+        <div style="padding:10px 14px;border-top:1px solid var(--line)"><button class="btn sm" id="model-folder-add">Add a folder</button> <span class="note" style="margin-left:8px">Built-in folders (Janus models, LM Studio, Ollama, etc.) are listed automatically.</span></div>
+      </div>
+
+      <div class="section-title">Other AI services</div>
+      <div class="panel">
+        <div class="field"><div class="lab">Ollama</div><div class="ctl"><input class="input" id="set-ollama-url" placeholder="http://127.0.0.1:11434" style="width:280px"><span class="note">live</span></div></div>
+        <div class="field"><div class="lab">OpenRouter key</div><div class="ctl"><input class="input" id="set-openrouter-key" placeholder="not set" style="width:280px"><span class="note">live</span></div></div>
+        <div class="field"><div class="lab">OpenAI-compatible server</div><div class="ctl"><input class="input" id="set-openai-base" placeholder="https://…/v1" style="width:280px"><span class="note">live</span></div></div>
+        <div class="field"><div class="lab">Anthropic key</div><div class="ctl"><input class="input" id="set-anthropic-key" placeholder="not set" style="width:280px"><span class="note">live</span></div></div>
+        <div class="field"><div class="lab">Gemini key</div><div class="ctl"><input class="input" id="set-gemini-key" placeholder="not set" style="width:280px"><span class="note">live</span></div></div>
+        <div class="field"><div class="lab">Hugging Face token<div class="help">Only for gated downloads</div></div><div class="ctl"><input class="input" id="set-hf-token" placeholder="not set" style="width:280px"><span class="note">live</span></div></div>
+        <div class="field"><div class="lab">Use only this PC<div class="help">Never send anything to online services</div></div><div class="ctl"><div class="switch" id="set-local-only"></div><span class="note">live</span></div></div>
+      </div>
+
+      <div class="section-title">Engine and updates</div>
+      <div class="panel">
+        <div class="field"><div class="lab">Janus version</div><div class="ctl"><span class="mono" id="settings-version">—</span></div></div>
+        <div class="field"><div class="lab">Settings file</div><div class="ctl"><span class="mono" id="settings-path">—</span></div></div>
+      </div>
+    </section>
+
+  </main>
+</div>
+<script src="/static/lucide.min.js"></script>
+<script src="/console.js"></script>
+<script>
+  document.querySelectorAll('.tabs').forEach(t => t.addEventListener('click', e => {
+    if (!e.target.classList.contains('tab')) return;
+    t.querySelectorAll('.tab').forEach(x => x.classList.toggle('on', x === e.target));
+  }));
+  if (window.lucide && lucide.createIcons) lucide.createIcons();
+</script>
+</body>
+</html>

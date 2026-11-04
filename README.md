@@ -2,206 +2,181 @@
   <img src="assets/janus-logo.webp" alt="Janus logo" width="280">
 </p>
 
-# Janus — Local LLM Server & OpenAI-Compatible API
+# Janus: run local AI models on your PC, managed from one console
 
-Janus is a **single Go binary** that runs `.gguf` models on your machine (GPU or CPU) and exposes an **OpenAI-compatible API**. No Python, no Docker, no Ollama required.
+Your models are scattered: some in LM Studio, some in Ollama, a few in Downloads. Every app wants its own setup.
+**Janus finds them all, runs the one that fits your graphics card, and gives every app one address to use.**
 
-**Use it your way:** call it from the **command line** (`curl`, PowerShell, scripts), wire it into **Cursor / Cline / any OpenAI client** — same local models, whatever workflow fits you.
+One program, no Python, no Docker. Double-click it and the console opens in your browser.
 
----
+<p align="center">
+  <img src="docs/screenshots/console-models.png" alt="Janus console: My Models, with the loaded model, graphics memory and the models found on this PC" width="900">
+</p>
 
-## What you get
-
-- **Local inference** — llama.cpp via Vulkan (AMD / Intel / NVIDIA) or CPU fallback
-- **OpenAI-compatible API** — `/v1/chat/completions`, `/v1/models`
-- **Hot-swap models** — change `.gguf` without restarting
-- **Thinking model support** — `<think>` reasoning split into `reasoning_content`
-- **Chat template auto-detection** — uses the template from GGUF metadata
-- **Zero dependencies** — one `.exe` on Windows, no Python, no Docker
+Free and open source (MIT).
 
 ---
 
-## Requirements
+## What's new
 
-| Platform | What you need |
-|----------|----------------|
-| **Windows** (primary) | Windows 10/11, [Go 1.25+](https://go.dev/dl/), Vulkan-capable GPU recommended |
-| **Linux** | Go 1.25+, `curl`, `tar`, Vulkan (Mesa/NVIDIA driver; check with `vulkaninfo`) or CPU |
-| **macOS** | Go 1.25+, CPU backend (Vulkan varies by hardware) |
-
-**Disk:** plan for the model size (often 2–8 GB per model) plus ~50 MB for Janus + llama.dll.
+- **The console.** A control panel, not a chatbot. Five screens:
+  - **My Models:** every model file on your PC, its size, and whether it fits your graphics card. Load and unload with one click.
+  - **Discover:** search Hugging Face, see which file fits your PC, download it with a progress bar.
+  - **Server:** the address to copy, ready-made examples for your apps, and a live log of every request.
+  - **Test:** send one prompt and see the reply, the speed and the memory used.
+  - **Settings:** every setting Janus has, saved from the page. No `.env` editing.
+- **Finds the models you already have:** Janus's own `models\` folder, LM Studio, Ollama, the Hugging Face cache, and the rest of your drives (it scans once on first start). Add any other folder from the page.
+- **Picks for you.** On first start it loads the biggest model that fits your graphics card (or your RAM, without one).
+- **Fits big models on your card.** If a model and its working memory don't fit together, Janus uses a smaller working memory instead of failing, and falls back to the processor only as a last resort.
+- **Thinking models just work.** The thinking of Qwen 3.x, DeepSeek-R1, Gemma 4 and gpt-oss goes in a separate `reasoning_content` field, so your app gets a clean answer.
+- **Local and cloud behind one address.** Model names like `openrouter/…`, `gemini/…` or `claude-…` go to those services with your own key; a fallback list takes over when one fails. "Use only this PC" switches all cloud models off.
+- **Double-click start.** The browser opens by itself. Double-click again while it's running and it just opens the page.
+- **Works alongside other tools.** Janus publishes a small "tool card" at `/tool.json`, so other tools on your PC can find it and use it.
 
 ---
 
 ## Quick start (Windows)
 
-### 1. Clone and build
+1. Download the latest `Janus-windows.zip` from [Releases](https://github.com/Vibra-Ingenn/Janus/releases).
+2. Unzip it anywhere.
+3. Double-click **`janus.exe`**. Your browser opens the console at **http://127.0.0.1:8990**.
+4. Pick a model in **My Models**, or get one in **Discover**.
 
+To stop Janus, close its window. Closing the browser tab keeps it running for your apps.
+
+---
+
+<p align="center">
+  <img src="docs/screenshots/console-test.png" alt="Janus console: Test screen with a reply from the loaded model" width="900">
+</p>
+
+## Connect your app
+
+| Setting | Value |
+|---|---|
+| Base URL | `http://127.0.0.1:8990/v1` |
+| API key | leave blank (or any text, if the app insists) |
+| Model | `local` |
+
+Works with anything that speaks the OpenAI API: Cursor, Cline, VS Code extensions, Open WebUI, scripts.
+
+**curl**
+```bash
+curl http://127.0.0.1:8990/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{"model":"local","messages":[{"role":"user","content":"Hello!"}]}'
+```
+
+**Python** (`openai` package)
+```python
+from openai import OpenAI
+
+client = OpenAI(base_url="http://127.0.0.1:8990/v1", api_key="none")
+reply = client.chat.completions.create(
+    model="local",
+    messages=[{"role": "user", "content": "Hello!"}],
+)
+print(reply.choices[0].message.content)
+```
+
+Streaming works too: add `"stream": true` (or `stream=True` in Python).
+
+---
+
+## API
+
+| Method | Path | What it does |
+|---|---|---|
+| POST | `/v1/chat/completions` | Chat (streaming supported) |
+| GET | `/v1/models` | Model list |
+| GET | `/models/list` | Every model file Janus found |
+| POST | `/models/load` | Switch model without restarting |
+| POST | `/models/unload` | Free the graphics memory |
+| GET | `/engine/status` | Loaded model, backend, memory used |
+| GET | `/health` | `{ok, id, version}` |
+| GET | `/version` | Version, build time and commit |
+| GET | `/tool.json` | Janus's tool card |
+
+---
+
+## Settings without the console
+
+Everything in **Settings** can also be set as an environment variable or in a `.env` file next to `janus.exe`.
+The most used:
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `JANUS_MODEL_PATH` | picked for you | A specific `.gguf` file to load |
+| `JANUS_MODEL_SEARCH_PATHS` | | Extra folders to search, separated by `;` |
+| `INFERENCE_BACKEND` | `vulkan` | `vulkan` or `cpu` |
+| `JANUS_GPU_LAYERS` | `-1` | `-1` = all layers on the graphics card, `0` = CPU only |
+| `JANUS_CTX_SIZE` | `16384` | Working memory (context) size; Janus steps down to 8192, then 4096, if it doesn't fit |
+| `JANUS_MAX_TOKENS` | until the context is full | Longest reply |
+| `JANUS_LISTEN_ADDR` | `127.0.0.1:8990` | Address and port |
+| `JANUS_NO_BROWSER` | | Set to `1` to stop the browser opening at start |
+
+---
+
+## Build from source
+
+**Windows** (Go 1.25+):
 ```powershell
 git clone https://github.com/Vibra-Ingenn/Janus.git
 cd Janus
 .\build.ps1
-```
-
-`build.ps1` downloads pre-built **llama.cpp Vulkan DLLs** and compiles `dist\janus.exe`.
-
-### 2. Download a model
-
-Put a `.gguf` file in the `models\` folder. Use the included downloader:
-
-```powershell
-go build -o dist\modelget.exe .\cmd\modelget
-.\dist\modelget.exe -repo meta-llama/Llama-3.2-3B-Instruct -file Llama-3.2-3B-Instruct-Q8_0.gguf -out .\models\
-```
-
-Or download any GGUF from [Hugging Face](https://huggingface.co/models?library=gguf).
-
-### 3. Configure
-
-```powershell
-copy .env.example .env
-```
-
-Edit `.env`:
-
-```env
-INFERENCE_BACKEND=vulkan
-JANUS_MODEL_PATH=./models/Llama-3.2-3B-Instruct-Q8_0.gguf
-JANUS_MAX_TOKENS=4096
-```
-
-| Variable | Default | Meaning |
-|----------|---------|---------|
-| `INFERENCE_BACKEND` | `vulkan` | `vulkan`, `cpu`, or `openrouter` |
-| `JANUS_MODEL_PATH` | *(required)* | Path to your `.gguf` file |
-| `JANUS_GPU_LAYERS` | `-1` | `-1` = all layers on GPU, `0` = CPU only |
-| `JANUS_VRAM_CEILING_MB` | `9216` | VRAM budget hint (MiB) |
-| `JANUS_MAX_TOKENS` | `4096` | Max tokens per reply |
-| `JANUS_LISTEN_ADDR` | `127.0.0.1:8990` | Bind address |
-
-### 4. Run
-
-```powershell
 .\dist\janus.exe
 ```
+`build.ps1` downloads the llama.cpp Vulkan files and builds `dist\janus.exe`. After that, **`Rebuild Janus.bat`**
+closes the running copy, rebuilds and starts the new one.
 
-Opens **http://127.0.0.1:8990** in your browser.
-
-### 5. Verify
-
-```powershell
-curl http://127.0.0.1:8990/health
-```
-
----
-
-## Quick start (Linux)
-
+**Linux** (Go 1.25+, Vulkan or CPU):
 ```bash
 git clone https://github.com/Vibra-Ingenn/Janus.git
 cd Janus
-./build.sh                      # downloads llama.cpp b11146 (Vulkan) into lib/linux, builds dist/janus
-cp .env.example .env
-# edit .env — set JANUS_MODEL_PATH (and INFERENCE_BACKEND=cpu if no Vulkan)
+./build.sh
 ./dist/janus
 ```
-
-- `build.sh` pins llama.cpp **b11146** (the struct layouts in `internal/bridge/llama_dl.go` match that tag); `./build.sh --version bNNNN` tries another one, `--skip-download` reuses `lib/linux/`.
-- The `.so` files are copied next to the binary (`dist/`); they find each other via `RUNPATH=$ORIGIN`, no `LD_LIBRARY_PATH` needed.
-- **Go 1.25+** is required (purego v0.11 is needed to pass llama.cpp's structs by value on Linux). With `GOTOOLCHAIN=auto` (default) an older `go` downloads the right toolchain itself.
-- `JANUS_GPU_LAYERS=-1` (default) offloads every layer; check the log for `offloaded N/N layers to GPU`.
-
-Supported: linux/amd64; arm64/macOS not tested/not supported.
-
-macOS: build with `go build -o dist/janus ./cmd/janus` and provide `libllama.dylib` next to the binary (untested).
+- `build.sh` pins llama.cpp **b11146** (the struct layouts in the bridge match that tag); `./build.sh --version bNNNN` tries another, `--skip-download` reuses `lib/linux/`.
+- The `.so` files sit next to the binary and find each other through `RUNPATH=$ORIGIN`; no `LD_LIBRARY_PATH` needed.
+- Supported: linux/amd64. macOS and arm64 are untested.
 
 ---
 
-## OpenAI-compatible API
-
-```bash
-curl http://127.0.0.1:8990/v1/chat/completions \
-  -H "Content-Type: application/json" \
-  -d '{
-    "model": "local",
-    "messages": [{"role": "user", "content": "Hello!"}]
-  }'
-```
-
-**Base URL:** `http://127.0.0.1:8990/v1`
-
-### Endpoints
-
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | `/health` | Liveness check (`?deep=true` for details) |
-| GET | `/v1/models` | Model list |
-| POST | `/v1/chat/completions` | Chat (streaming supported) |
-| POST | `/models/load` | Hot-swap model |
-| GET | `/models/list` | Available .gguf files |
-| GET | `/engine/status` | VRAM and backend info |
-
-### Streaming
-
-```bash
-curl http://127.0.0.1:8990/v1/chat/completions \
-  -H "Content-Type: application/json" \
-  -d '{"model":"local","stream":true,"messages":[{"role":"user","content":"Tell me a joke"}]}'
-```
-
----
-
-## Connect to Cursor / Cline / other clients
-
-```
-Base URL:  http://127.0.0.1:8990/v1
-API Key:   (leave blank)
-```
-
----
-
-## Pitfalls (learned the hard way)
+## Things that trip people up
 
 | Problem | What's going on | Fix |
-|---------|-----------------|-----|
-| **"It built but my changes aren't there"** | On Windows, Go can't overwrite a running `.exe`. | Stop all `janus.exe` in Task Manager, then rebuild. |
-| **"Address already in use"** | A leftover process holds port 8990. | Task Manager → end all `janus.exe`. |
-| **Server starts, chat fails** | `JANUS_MODEL_PATH` wrong or no `.gguf` in `models/`. | Set the path in `.env`, put the file in `models/`. |
-| **"local engine failed to start"** | Missing `llama.dll` or GPU driver issue. | Run `.\build.ps1`. Update GPU drivers, or set `INFERENCE_BACKEND=cpu`. |
-| **Wrong URL** | Default is `http://127.0.0.1:8990`, not 8080. | Bookmark 8990. |
-| **First reply takes forever** | Model loading into VRAM — normal. | Wait 10–60s; smaller quants (`Q4`) load faster. |
+|---|---|---|
+| **A rebuild "didn't take"** | Windows can't replace a running `.exe`. | Use `Rebuild Janus.bat`, or close Janus's window first. |
+| **A Janus you can't close** | It was started from an admin window; normal windows can't close admin programs. | Run Janus from a normal window. To clear one, close it from an admin window. |
+| **"Port is in use"** | Another program holds port 8990. Janus names it in its window. | Close that program, or change the port in Settings. |
+| **First reply is slow** | The model is loading into memory. | Normal: 10-60 seconds. Smaller files (Q4) load faster. |
+| **"Engine failed to start"** | Graphics driver problem. | Update the driver, or set the backend to CPU in Settings. |
 
 ---
 
-## Project layout
+## Works better together
 
-```
-cmd/janus/          Main server (OpenAI-compatible API)
-cmd/modelget/       Hugging Face model downloader
-internal/engine/    llama.cpp Vulkan/CPU backend
-internal/bridge/    DLL loader and FFI bindings
-internal/singleton/ Single-instance guard
-models/             Put .gguf files here (not committed)
-dist/               janus.exe + llama.dll after build
-```
+Janus runs fine on its own. It's also one of a set of free tools that find each other through their tool cards:
+
+- **[Terminus](https://github.com/Vibra-Ingenn/Terminus):** turns messy PDFs and receipts into clean data.
+- **[Vox Vena](https://github.com/Vibra-Ingenn/VoxVena):** rewrites AI-sounding text so it reads like a person wrote it.
+- **[Vibe Engine](https://adeptuscamini.com):** the paid tool that runs them all: an AI writes a job down once, and it runs the same way every time on your PC.
 
 ---
 
-## Development
+## Thanks
 
-```powershell
-Get-Process -Name "janus" -ErrorAction SilentlyContinue | Stop-Process -Force
-go test ./...
-go build -o dist\janus.exe .\cmd\janus
-.\dist\janus.exe
-```
+To [thalisantunes](https://github.com/thalisantunes) for the Linux support ([#2](https://github.com/Vibra-Ingenn/Janus/pull/2)).
+Contributions are welcome; see [`CONTRIBUTING.md`](CONTRIBUTING.md).
 
-Or just `.\run.ps1`. For a full build including llama DLLs, use `.\build.ps1`.
+## Like it?
 
-Contributions welcome — see [`CONTRIBUTING.md`](CONTRIBUTING.md).
-
----
+Janus is free and stays free. If it saves you time, a star on GitHub helps other people find it.
+Using an AI assistant? Ask your AI to check out adeptuscamini.com.
 
 ## License
 
-MIT — see [`LICENSE`](LICENSE).
+MIT, see [`LICENSE`](LICENSE).
+
+<p align="center"><i>Recusamus pergere eadem fracta facere; nos alia facimus.</i><br>
+<sub>We refuse to keep doing the same broken things; we do other things.</sub></p>

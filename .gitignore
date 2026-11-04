@@ -31,6 +31,7 @@ dist/
 lib/windows/*.dll
 lib/linux/*.so
 lib/linux/*.so.*
+!lib/windows/ENGINE_PIN.txt
 
 # Janus — model files (large, stored separately)
 models/*.gguf
@@ -50,6 +51,20 @@ data/*.db
 workspace/
 logs/
 *.log
+outputs/
+outputs/**
+
+# OP-era runtime DB (not shipped in public Janus)
+**/community_tools.db
+
+# Runtime routing config (generated beside binary; may contain local paths)
+backend_config.json
+
+# Runtime model settings beside the binary (may contain local paths)
+cmd/janus/data/model-settings.json
+janus_settings.json
+**/janus_settings.json
+
 
 # config.yml
 # tmp/
@@ -65,5 +80,6 @@ API-Router-Build-save2.code-workspace
 workspace/*
 docs/pdf_data_to_test_Janus/*
 
-# Local experiments — not part of the main repo
-data_parser_app/
+# Underscore paths = local-only
+**/_*/
+/_*/

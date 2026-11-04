@@ -1,0 +1,33 @@
+{
+  "spec": "tool-card/0.1",
+  "id": "janus",
+  "name": "Janus",
+  "kind": "service",
+  "version": "0.2.0",
+  "summary": "Local model host and OpenAI-compatible API on your PC.",
+  "maker": "Adeptus Camini",
+  "license": "MIT",
+  "homepage": "https://github.com/adeptuscamini/janus",
+  "default_port": 8990,
+  "health": "/health",
+  "ui": { "path": "/", "label": "Janus" },
+  "actions": [
+    {
+      "name": "chat_completions",
+      "summary": "OpenAI-compatible chat completion.",
+      "method": "POST",
+      "path": "/v1/chat/completions",
+      "input": { "json": "OpenAI chat completion body" },
+      "output": "application/json"
+    },
+    {
+      "name": "models_list",
+      "summary": "List models available on this host.",
+      "method": "GET",
+      "path": "/v1/models",
+      "output": "application/json"
+    }
+  ],
+  "cli": null,
+  "mcp": null
+}
